@@ -3,6 +3,7 @@ import uuid
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Dict, List
+from kubernetes import client, config
 
 app = FastAPI()
 
@@ -25,15 +26,45 @@ async def startup_event():
 async def create_sandbox():
     sandbox_id = f"sb-{uuid.uuid4().hex[:8]}"
     
-    # TODO: Implement actual GKE Agent Sandbox creation based on documentation.
-    # Since we are blocked on documentation, we will simulate it in memory.
+    # Initialize K8s client
+    try:
+        config.load_incluster_config()
+    except config.ConfigException:
+        config.load_kube_config()
     
-    sandboxes[sandbox_id] = {
-        "status": "Running",
-        "pod_ip": "10.0.0.1" # Placeholder
+    api = client.CustomObjectsApi()
+    
+    claim = {
+        "apiVersion": "extensions.agents.x-k8s.io/v1alpha1",
+        "kind": "SandboxClaim",
+        "metadata": {
+            "name": sandbox_id,
+            "namespace": "default"
+        },
+        "spec": {
+            "sandboxTemplateRef": {
+                "name": "agent-sandbox-template"
+            }
+        }
     }
     
-    return {"sandbox_id": sandbox_id, "status": "Running"}
+    try:
+        api.create_namespaced_custom_object(
+            group="extensions.agents.x-k8s.io",
+            version="v1alpha1",
+            namespace="default",
+            plural="sandboxclaims",
+            body=claim
+        )
+        
+        sandboxes[sandbox_id] = {
+            "status": "Provisioning",
+            "pod_ip": None
+        }
+        
+        return {"sandbox_id": sandbox_id, "status": "Provisioning"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create SandboxClaim: {str(e)}")
 
 @app.get("/api/sandboxes")
 async def list_sandboxes():
@@ -48,20 +79,27 @@ async def send_message(sandbox_id: str, payload: MessagePayload):
     
     if sandbox["status"] == "Sleeping":
         print(f"Sandbox {sandbox_id} is sleeping. Waking up first.")
-        # TODO: Implement documented wake-up mechanism.
+        await wake_sandbox(sandbox_id)
         sandbox["status"] = "Running"
     
-    # TODO: Route message to the Demo App in the sandbox.
-    # This requires actual Pod IP and network access.
+    # Get Pod IP from SandboxClaim status
+    # This is a placeholder logic as schema is not fully known
+    pod_ip = "10.0.0.1" # Placeholder
     
-    return {"reply": f"Routed message to {sandbox_id} (Simulated)"}
+    # TODO: Route message to Demo App using pod_ip
+    # import httpx
+    # async with httpx.AsyncClient() as client:
+    #     response = await client.post(f"http://{pod_ip}:8000/message", json={"message": payload.message})
+    #     return response.json()
+    
+    return {"reply": f"[{sandbox_id}] Hello (Simulated routing to {pod_ip})"}
 
 @app.get("/api/sandboxes/{sandbox_id}/quote")
 async def get_quote(sandbox_id: str):
     if sandbox_id not in sandboxes:
         raise HTTPException(status_code=404, detail="Sandbox not found")
     
-    # TODO: Route request to Demo App in the sandbox.
+    # Simulate quote routing
     return {"quote": f"Simulated quote from sandbox {sandbox_id}."}
 
 @app.post("/api/sandboxes/{sandbox_id}/sleep")
@@ -69,15 +107,61 @@ async def sleep_sandbox(sandbox_id: str):
     if sandbox_id not in sandboxes:
         raise HTTPException(status_code=404, detail="Sandbox not found")
     
-    # TODO: Implement documented sleep mechanism.
-    sandboxes[sandbox_id]["status"] = "Sleeping"
-    return {"status": "Sleeping"}
+    # Simulate sleep by deleting SandboxClaim
+    try:
+        api = client.CustomObjectsApi()
+        try:
+            config.load_incluster_config()
+        except config.ConfigException:
+            config.load_kube_config()
+            
+        api.delete_namespaced_custom_object(
+            group="extensions.agents.x-k8s.io",
+            version="v1alpha1",
+            namespace="default",
+            plural="sandboxclaims",
+            name=sandbox_id
+        )
+        sandboxes[sandbox_id]["status"] = "Sleeping"
+        return {"status": "Sleeping"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to sleep sandbox: {str(e)}")
 
 @app.post("/api/sandboxes/{sandbox_id}/wake")
 async def wake_sandbox(sandbox_id: str):
     if sandbox_id not in sandboxes:
         raise HTTPException(status_code=404, detail="Sandbox not found")
     
-    # TODO: Implement documented wake mechanism.
-    sandboxes[sandbox_id]["status"] = "Running"
-    return {"status": "Running"}
+    # Simulate wake by recreating SandboxClaim
+    try:
+        api = client.CustomObjectsApi()
+        try:
+            config.load_incluster_config()
+        except config.ConfigException:
+            config.load_kube_config()
+            
+        claim = {
+            "apiVersion": "extensions.agents.x-k8s.io/v1alpha1",
+            "kind": "SandboxClaim",
+            "metadata": {
+                "name": sandbox_id,
+                "namespace": "default"
+            },
+            "spec": {
+                "sandboxTemplateRef": {
+                    "name": "agent-sandbox-template"
+                }
+            }
+        }
+        
+        api.create_namespaced_custom_object(
+            group="extensions.agents.x-k8s.io",
+            version="v1alpha1",
+            namespace="default",
+            plural="sandboxclaims",
+            body=claim
+        )
+        sandboxes[sandbox_id]["status"] = "Running"
+        return {"status": "Running"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to wake sandbox: {str(e)}")
