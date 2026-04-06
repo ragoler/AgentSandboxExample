@@ -41,5 +41,6 @@ gcloud container clusters get-credentials "$CLUSTER_NAME" --region "$REGION"
 echo "Applying Kubernetes manifests..."
 kubectl apply -f infra/sandbox-template.yaml
 kubectl apply -f infra/sandbox-warmpool.yaml
+kubectl apply -f infra/gateway.yaml
 
 echo "Infrastructure build complete!"
