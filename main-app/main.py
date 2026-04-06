@@ -6,6 +6,16 @@ from typing import Dict, List
 from kubernetes import client, config
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv()
+
+MODE = os.environ.get("MODE", "MOCK").upper()
+GATEWAY_NAME = os.environ.get("GATEWAY_NAME", "external-http-gateway")
+
+if MODE == "REAL":
+    from k8s_agent_sandbox import SandboxClient
+    from k8s_agent_sandbox.models import SandboxGatewayConnectionConfig
 
 app = FastAPI()
 
@@ -28,45 +38,32 @@ async def startup_event():
 async def create_sandbox():
     sandbox_id = f"sb-{uuid.uuid4().hex[:8]}"
     
-    # Initialize K8s client
-    try:
-        config.load_incluster_config()
-    except config.ConfigException:
-        config.load_kube_config()
-    
-    api = client.CustomObjectsApi()
-    
-    claim = {
-        "apiVersion": "extensions.agents.x-k8s.io/v1alpha1",
-        "kind": "SandboxClaim",
-        "metadata": {
-            "name": sandbox_id,
-            "namespace": "default"
-        },
-        "spec": {
-            "sandboxTemplateRef": {
-                "name": "agent-sandbox-template"
-            }
-        }
-    }
-    
-    try:
-        api.create_namespaced_custom_object(
-            group="extensions.agents.x-k8s.io",
-            version="v1alpha1",
-            namespace="default",
-            plural="sandboxclaims",
-            body=claim
-        )
-        
+    if MODE == "MOCK":
         sandboxes[sandbox_id] = {
-            "status": "Provisioning",
-            "pod_ip": None
+            "status": "Running",
+            "pod_ip": "127.0.0.1"
         }
+        return {"sandbox_id": sandbox_id, "status": "Running"}
         
-        return {"sandbox_id": sandbox_id, "status": "Provisioning"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create SandboxClaim: {str(e)}")
+    elif MODE == "REAL":
+        try:
+            client_instance = SandboxClient(
+                connection_config=SandboxGatewayConnectionConfig(
+                    gateway_name=GATEWAY_NAME,
+                )
+            )
+            # Create sandbox using client
+            # We assume the template exists as per infra manifests
+            sandbox = client_instance.create_sandbox(template="agent-sandbox-template", namespace="default")
+            
+            sandboxes[sandbox_id] = {
+                "status": "Provisioning",
+                "client_sandbox": sandbox
+            }
+            
+            return {"sandbox_id": sandbox_id, "status": "Provisioning"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to create Sandbox via client: {str(e)}")
 
 @app.get("/api/sandboxes")
 async def list_sandboxes():
@@ -84,89 +81,75 @@ async def send_message(sandbox_id: str, payload: MessagePayload):
         await wake_sandbox(sandbox_id)
         sandbox["status"] = "Running"
     
-    # Get Pod IP from SandboxClaim status
-    # This is a placeholder logic as schema is not fully known
-    pod_ip = "10.0.0.1" # Placeholder
-    
-    # TODO: Route message to Demo App using pod_ip
-    # import httpx
-    # async with httpx.AsyncClient() as client:
-    #     response = await client.post(f"http://{pod_ip}:8000/message", json={"message": payload.message})
-    #     return response.json()
-    
-    return {"reply": f"[{sandbox_id}] Hello (Simulated routing to {pod_ip})"}
+    if MODE == "MOCK":
+        # Simulate demo-app behavior (reply with sandbox ID)
+        return {"reply": f"[{sandbox_id}] {payload.message}"}
+        
+    elif MODE == "REAL":
+        client_sandbox = sandbox.get("client_sandbox")
+        if not client_sandbox:
+             raise HTTPException(status_code=500, detail="Client sandbox instance not found")
+             
+        # Run curl command inside sandbox to call the Demo App
+        import json
+        cmd = f"curl -s -X POST http://localhost:8000/message -H 'Content-Type: application/json' -d '{{\"message\": \"{payload.message}\"}}'"
+        try:
+            result = client_sandbox.commands.run(cmd)
+            reply_data = json.loads(result.stdout)
+            return reply_data
+        except Exception as e:
+             raise HTTPException(status_code=500, detail=f"Failed to run command in sandbox: {str(e)}")
 
 @app.get("/api/sandboxes/{sandbox_id}/quote")
 async def get_quote(sandbox_id: str):
     if sandbox_id not in sandboxes:
         raise HTTPException(status_code=404, detail="Sandbox not found")
     
-    # Simulate quote routing
-    return {"quote": f"Simulated quote from sandbox {sandbox_id}."}
+    if MODE == "MOCK":
+        # Simulate demo-app behavior
+        return {"quote": f"[{sandbox_id}] Simulated quote: The only way to do great work is to love what you do."}
+        
+    elif MODE == "REAL":
+        client_sandbox = sandboxes[sandbox_id].get("client_sandbox")
+        if not client_sandbox:
+             raise HTTPException(status_code=500, detail="Client sandbox instance not found")
+             
+        # Run curl command inside sandbox to call the Demo App
+        import json
+        cmd = "curl -s http://localhost:8000/quote"
+        try:
+            result = client_sandbox.commands.run(cmd)
+            reply_data = json.loads(result.stdout)
+            return reply_data
+        except Exception as e:
+             raise HTTPException(status_code=500, detail=f"Failed to run command in sandbox: {str(e)}")
 
 @app.post("/api/sandboxes/{sandbox_id}/sleep")
 async def sleep_sandbox(sandbox_id: str):
     if sandbox_id not in sandboxes:
         raise HTTPException(status_code=404, detail="Sandbox not found")
     
-    # Simulate sleep by deleting SandboxClaim
-    try:
-        api = client.CustomObjectsApi()
-        try:
-            config.load_incluster_config()
-        except config.ConfigException:
-            config.load_kube_config()
-            
-        api.delete_namespaced_custom_object(
-            group="extensions.agents.x-k8s.io",
-            version="v1alpha1",
-            namespace="default",
-            plural="sandboxclaims",
-            name=sandbox_id
-        )
+    if MODE == "MOCK":
         sandboxes[sandbox_id]["status"] = "Sleeping"
         return {"status": "Sleeping"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to sleep sandbox: {str(e)}")
+        
+    elif MODE == "REAL":
+        # TODO: Implement documented sleep mechanism using client if available, or delete claim.
+        # README doesn't show sleep/wake explicitly.
+        raise HTTPException(status_code=501, detail="Sleep not implemented for Real mode yet")
 
 @app.post("/api/sandboxes/{sandbox_id}/wake")
 async def wake_sandbox(sandbox_id: str):
     if sandbox_id not in sandboxes:
         raise HTTPException(status_code=404, detail="Sandbox not found")
     
-    # Simulate wake by recreating SandboxClaim
-    try:
-        api = client.CustomObjectsApi()
-        try:
-            config.load_incluster_config()
-        except config.ConfigException:
-            config.load_kube_config()
-            
-        claim = {
-            "apiVersion": "extensions.agents.x-k8s.io/v1alpha1",
-            "kind": "SandboxClaim",
-            "metadata": {
-                "name": sandbox_id,
-                "namespace": "default"
-            },
-            "spec": {
-                "sandboxTemplateRef": {
-                    "name": "agent-sandbox-template"
-                }
-            }
-        }
-        
-        api.create_namespaced_custom_object(
-            group="extensions.agents.x-k8s.io",
-            version="v1alpha1",
-            namespace="default",
-            plural="sandboxclaims",
-            body=claim
-        )
+    if MODE == "MOCK":
         sandboxes[sandbox_id]["status"] = "Running"
         return {"status": "Running"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to wake sandbox: {str(e)}")
+        
+    elif MODE == "REAL":
+        # TODO: Implement documented wake mechanism using client.
+        raise HTTPException(status_code=501, detail="Wake not implemented for Real mode yet")
 
 # Mount Static Files for Frontend
 current_dir = Path(__file__).parent
