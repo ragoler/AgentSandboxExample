@@ -153,6 +153,25 @@ async def wake_sandbox(sandbox_id: str):
         # TODO: Implement documented wake mechanism using client.
         raise HTTPException(status_code=501, detail="Wake not implemented for Real mode yet")
 
+@app.delete("/api/sandboxes/{sandbox_id}")
+async def delete_sandbox(sandbox_id: str):
+    if sandbox_id not in sandboxes:
+        raise HTTPException(status_code=404, detail="Sandbox not found")
+    
+    if MODE == "MOCK":
+        del sandboxes[sandbox_id]
+        return {"status": "Deleted"}
+        
+    elif MODE == "REAL":
+        client_sandbox = sandboxes[sandbox_id].get("client_sandbox")
+        if client_sandbox:
+            try:
+                client_sandbox.terminate()
+            except Exception as e:
+                 print(f"Error terminating sandbox: {e}")
+        del sandboxes[sandbox_id]
+        return {"status": "Deleted"}
+
 # Mount Static Files for Frontend
 current_dir = Path(__file__).parent
 frontend_dir = current_dir.parent / "frontend"

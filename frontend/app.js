@@ -41,6 +41,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <button class="btn secondary interact-btn" data-id="${sb.sandbox_id}">Interact</button>
                     <button class="btn secondary sleep-btn" data-id="${sb.sandbox_id}" ${sb.status === 'Sleeping' ? 'disabled' : ''}>Sleep</button>
                     <button class="btn secondary wake-btn" data-id="${sb.sandbox_id}" ${sb.status === 'Running' ? 'disabled' : ''}>Wake</button>
+                    <button class="btn danger delete-btn" data-id="${sb.sandbox_id}">Delete</button>
                 </div>
             `;
             grid.appendChild(card);
@@ -70,6 +71,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 const id = e.target.dataset.id;
                 await fetch(`/api/sandboxes/${id}/wake`, { method: 'POST' });
                 fetchSandboxes();
+            });
+        });
+
+        document.querySelectorAll('.delete-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const id = e.target.dataset.id;
+                if (confirm(`Are you sure you want to delete sandbox ${id}?`)) {
+                    await fetch(`/api/sandboxes/${id}`, { method: 'DELETE' });
+                    fetchSandboxes();
+                }
             });
         });
     }
