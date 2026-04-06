@@ -37,4 +37,3 @@ echo "Pushing Main Application image..."
 docker push "${REGISTRY}/main-app:latest"
 
 echo "Deployment images pushed successfully to ${REGISTRY}"
-echo "NOTE: Remember to update the image in infra/sandbox-template.yaml to use ${REGISTRY}/demo-app:latest"
