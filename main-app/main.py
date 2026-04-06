@@ -4,6 +4,8 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Dict, List
 from kubernetes import client, config
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 
 app = FastAPI()
 
@@ -165,3 +167,9 @@ async def wake_sandbox(sandbox_id: str):
         return {"status": "Running"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to wake sandbox: {str(e)}")
+
+# Mount Static Files for Frontend
+current_dir = Path(__file__).parent
+frontend_dir = current_dir.parent / "frontend"
+
+app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
