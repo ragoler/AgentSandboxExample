@@ -15,7 +15,7 @@ else:
     print("Warning: GOOGLE_CLOUD_PROJECT environment variable not set. Vertex AI might fail to initialize.")
     vertexai.init()
 
-model = GenerativeModel("gemini-1.5-flash-001")
+model = GenerativeModel("gemini-2.5-flash")
 
 sandbox_id = os.environ.get("SANDBOX_ID", "UNKNOWN_SANDBOX")
 

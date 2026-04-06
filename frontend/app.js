@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalTitle = document.getElementById('modal-title');
 
     let activeSandboxId = null;
+    const lastMessages = {}; // Store last message per sandbox
 
     async function fetchSandboxes() {
         grid.innerHTML = '<div class="card skeleton">Loading sandboxes...</div>';
@@ -36,28 +37,28 @@ document.addEventListener('DOMContentLoaded', () => {
             card.className = 'card';
             card.innerHTML = `
                 <h3>Sandbox: ${sb.sandbox_id}</h3>
-                <div class="status ${sb.status.toLowerCase()}">${sb.status}</div>
+                <div class="card-row status-row">
+                    <div class="status ${sb.status.toLowerCase()}">${sb.status}</div>
+                    <div class="input-group compact">
+                        <input type="text" id="input-${sb.sandbox_id}" placeholder="Message...">
+                        <button class="btn primary send-btn" data-id="${sb.sandbox_id}">Send</button>
+                    </div>
+                </div>
                 <div class="card-actions">
-                    <button class="btn secondary interact-btn" data-id="${sb.sandbox_id}">Interact</button>
                     <button class="btn secondary sleep-btn" data-id="${sb.sandbox_id}" ${sb.status === 'Sleeping' ? 'disabled' : ''}>Sleep</button>
                     <button class="btn secondary wake-btn" data-id="${sb.sandbox_id}" ${sb.status === 'Running' ? 'disabled' : ''}>Wake</button>
+                    <button class="btn secondary quote-btn" data-id="${sb.sandbox_id}">Quote</button>
                     <button class="btn danger delete-btn" data-id="${sb.sandbox_id}">Delete</button>
+                </div>
+                <div class="last-message-area" id="last-message-${sb.sandbox_id}">
+                    <span class="label">Last Message:</span>
+                    <span class="content" id="message-content-${sb.sandbox_id}">${lastMessages[sb.sandbox_id] || 'None'}</span>
                 </div>
             `;
             grid.appendChild(card);
         });
 
         // Add event listeners to card buttons
-        document.querySelectorAll('.interact-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                activeSandboxId = e.target.dataset.id;
-                modalTitle.textContent = `Interact with ${activeSandboxId}`;
-                chatArea.innerHTML = ''; // Clear previous chat
-                modal.classList.remove('hidden');
-                modal.classList.add('visible');
-            });
-        });
-
         document.querySelectorAll('.sleep-btn').forEach(btn => {
             btn.addEventListener('click', async (e) => {
                 const id = e.target.dataset.id;
@@ -77,9 +78,49 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.delete-btn').forEach(btn => {
             btn.addEventListener('click', async (e) => {
                 const id = e.target.dataset.id;
-                if (confirm(`Are you sure you want to delete sandbox ${id}?`)) {
-                    await fetch(`/api/sandboxes/${id}`, { method: 'DELETE' });
-                    fetchSandboxes();
+                await fetch(`/api/sandboxes/${id}`, { method: 'DELETE' });
+                fetchSandboxes();
+            });
+        });
+
+        document.querySelectorAll('.send-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const id = e.target.dataset.id;
+                const input = document.getElementById(`input-${id}`);
+                const messageContent = document.getElementById(`message-content-${id}`);
+                
+                if (!input.value) return;
+                
+                const message = input.value;
+                input.value = '';
+                
+                try {
+                    const response = await fetch(`/api/sandboxes/${id}/message`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ message })
+                    });
+                    const data = await response.json();
+                    lastMessages[id] = data.reply;
+                    fetchSandboxes(); // Refresh status card
+                } catch (error) {
+                    messageContent.textContent = 'Error: Failed to send message.';
+                }
+            });
+        });
+
+        document.querySelectorAll('.quote-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const id = e.target.dataset.id;
+                const messageContent = document.getElementById(`message-content-${id}`);
+                
+                try {
+                    const response = await fetch(`/api/sandboxes/${id}/quote`);
+                    const data = await response.json();
+                    lastMessages[id] = `Quote: ${data.quote}`;
+                    fetchSandboxes(); // Refresh status card
+                } catch (error) {
+                    messageContent.textContent = 'Error: Failed to get quote.';
                 }
             });
         });
@@ -96,51 +137,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     refreshBtn.addEventListener('click', fetchSandboxes);
 
-    closeModal.addEventListener('click', () => {
-        modal.classList.remove('visible');
-        modal.classList.add('hidden');
-        activeSandboxId = null;
-    });
-
-    sendBtn.addEventListener('click', async () => {
-        if (!activeSandboxId || !messageInput.value) return;
-
-        const message = messageInput.value;
-        appendMessage('user', message);
-        messageInput.value = '';
-
-        try {
-            const response = await fetch(`/api/sandboxes/${activeSandboxId}/message`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message })
-            });
-            const data = await response.json();
-            appendMessage('sandbox', data.reply);
-            fetchSandboxes();
-        } catch (error) {
-            appendMessage('sandbox', 'Error: Failed to send message.');
-        }
-    });
-
-    quoteBtn.addEventListener('click', async () => {
-        if (!activeSandboxId) return;
-
-        try {
-            const response = await fetch(`/api/sandboxes/${activeSandboxId}/quote`);
-            const data = await response.json();
-            appendMessage('sandbox', `Quote: ${data.quote}`);
-        } catch (error) {
-            appendMessage('sandbox', 'Error: Failed to get quote.');
-        }
-    });
-
-    function appendMessage(sender, text) {
+    function appendMessage(area, sender, text) {
         const msgDiv = document.createElement('div');
         msgDiv.className = `message ${sender}`;
         msgDiv.textContent = text;
-        chatArea.appendChild(msgDiv);
-        chatArea.scrollTop = chatArea.scrollHeight; // Scroll to bottom
+        area.appendChild(msgDiv);
+        area.scrollTop = area.scrollHeight; // Scroll to bottom
     }
 
     // Initial load
