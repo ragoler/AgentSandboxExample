@@ -52,6 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 activeSandboxId = e.target.dataset.id;
                 modalTitle.textContent = `Interact with ${activeSandboxId}`;
                 chatArea.innerHTML = ''; // Clear previous chat
+                modal.classList.remove('hidden');
                 modal.classList.add('visible');
             });
         });
@@ -86,6 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     closeModal.addEventListener('click', () => {
         modal.classList.remove('visible');
+        modal.classList.add('hidden');
         activeSandboxId = null;
     });
 
