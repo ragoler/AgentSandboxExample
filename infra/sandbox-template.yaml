@@ -1,0 +1,25 @@
+apiVersion: extensions.agents.x-k8s.io/v1alpha1
+kind: SandboxTemplate
+metadata:
+  name: agent-sandbox-template
+  namespace: default
+spec:
+  podTemplate:
+    metadata:
+      labels:
+        app: demo-agent
+    spec:
+      runtimeClassName: gvisor # Enforce gVisor sandbox
+      containers:
+      - name: demo-app
+        image: demo-app:latest # REPLACE with your Artifact Registry image path
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "512Mi"
+          limits:
+            cpu: "500m"
+            memory: "1Gi"
+        restartPolicy: OnFailure
