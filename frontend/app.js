@@ -106,6 +106,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const data = await response.json();
             appendMessage('sandbox', data.reply);
+            fetchSandboxes();
         } catch (error) {
             appendMessage('sandbox', 'Error: Failed to send message.');
         }
