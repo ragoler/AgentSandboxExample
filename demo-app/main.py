@@ -3,17 +3,21 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 import vertexai
 from vertexai.generative_models import GenerativeModel
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI()
 
 # Initialize Vertex AI
-# We assume GOOGLE_CLOUD_PROJECT is set in the environment.
+# We assume GOOGLE_CLOUD_PROJECT and REGION are set in the environment or .env file.
 project_id = os.environ.get("GOOGLE_CLOUD_PROJECT")
+region = os.environ.get("REGION")
 if project_id:
-    vertexai.init(project=project_id)
+    vertexai.init(project=project_id, location=region)
 else:
     print("Warning: GOOGLE_CLOUD_PROJECT environment variable not set. Vertex AI might fail to initialize.")
-    vertexai.init()
+    vertexai.init(location=region)
 
 model = GenerativeModel("gemini-2.5-flash")
 

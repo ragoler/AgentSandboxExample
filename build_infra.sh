@@ -3,19 +3,28 @@
 # Exit immediately if a command exits with a non-zero status.
 set -e
 
-# Define variables with defaults
+# Load environment variables from .env if it exists
+if [ -f .env ]; then
+  export $(cat .env | grep -v '^#' | xargs)
+fi
+
+# Define variables
 PROJECT_ID=$(gcloud config get-value project)
-CLUSTER_NAME=${CLUSTER_NAME:-"agent-sandbox-cluster"}
-REGION=${REGION:-"us-central1"}
+
+# Ensure required variables are set (expected from .env)
+if [ -z "$CLUSTER_NAME" ]; then
+  echo "Error: CLUSTER_NAME is not set. Please set it in .env or environment."
+  exit 1
+fi
+
+if [ -z "$REGION" ]; then
+  echo "Error: REGION is not set. Please set it in .env or environment."
+  exit 1
+fi
 CLUSTER_VERSION=${CLUSTER_VERSION:-"1.35.2-gke.1269000"}
 NODE_POOL_NAME=${NODE_POOL_NAME:-"agent-sandbox-pool"}
 MACHINE_TYPE=${MACHINE_TYPE:-"e2-standard-2"}
 
-echo "Creating Artifact Registry repository..."
-gcloud artifacts repositories create "agent-sandbox-repo" \
-    --repository-format=docker \
-    --location="$REGION" \
-    --description="Repository for Agent Sandbox demo app" || echo "Repository might already exist or failed to create, continuing..."
 
 echo "Creating GKE Standard cluster: $CLUSTER_NAME in $REGION..."
 gcloud beta container clusters create "$CLUSTER_NAME" \
@@ -39,7 +48,7 @@ echo "Getting cluster credentials..."
 gcloud container clusters get-credentials "$CLUSTER_NAME" --region "$REGION"
 
 echo "Applying Kubernetes manifests..."
-kubectl apply -f infra/sandbox-template.yaml
+envsubst < infra/sandbox-template.yaml | kubectl apply -f -
 kubectl apply -f infra/sandbox-warmpool.yaml
 kubectl apply -f infra/gateway.yaml
 
