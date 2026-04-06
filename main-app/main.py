@@ -3,6 +3,7 @@ import uuid
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Dict, List
+from contextlib import asynccontextmanager
 from kubernetes import client, config
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
@@ -17,8 +18,6 @@ if MODE == "REAL":
     from k8s_agent_sandbox import SandboxClient
     from k8s_agent_sandbox.models import SandboxGatewayConnectionConfig
 
-app = FastAPI()
-
 # In-Memory State
 # sandbox_id -> { "status": "Running" | "Sleeping", "pod_ip": "..." }
 sandboxes: Dict[str, dict] = {}
@@ -26,13 +25,16 @@ sandboxes: Dict[str, dict] = {}
 class MessagePayload(BaseModel):
     message: str
 
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     print("Application starting. Clearing all transient sandbox state.")
     # In a real K8s environment, we might want to delete pods with a certain label here.
     # For now, we just clear the in-memory dictionary.
     sandboxes.clear()
     # TODO: Add logic to delete actual K8s pods if needed.
+    yield
+
+app = FastAPI(lifespan=lifespan)
 
 @app.post("/api/sandboxes")
 async def create_sandbox():
