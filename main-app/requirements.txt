@@ -6,3 +6,4 @@ aiofiles
 k8s-agent-sandbox
 pytest
 python-dotenv
+httpx
