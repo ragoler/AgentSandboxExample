@@ -12,7 +12,7 @@ spec:
       runtimeClassName: gvisor # Enforce gVisor sandbox
       containers:
       - name: demo-app
-        image: demo-app:latest # REPLACE with your Artifact Registry image path
+        image: ${REGION}-docker.pkg.dev/${PROJECT_NAME}/agent-sandbox-repo/demo-app:latest
         ports:
         - containerPort: 8000
         resources:
