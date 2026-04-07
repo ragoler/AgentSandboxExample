@@ -142,6 +142,7 @@ header p {
 .status.running::before { background-color: var(--success); }
 .status.sleeping::before { background-color: var(--warning); }
 .status.error::before { background-color: var(--danger); }
+.status.provisioning::before { background-color: var(--primary); }
 
 .card-actions {
     display: flex;

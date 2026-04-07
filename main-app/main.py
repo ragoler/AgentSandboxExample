@@ -1,6 +1,6 @@
 import os
 import uuid
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from typing import Dict, List
 from contextlib import asynccontextmanager
@@ -16,7 +16,6 @@ GATEWAY_NAME = os.environ.get("GATEWAY_NAME", "external-http-gateway")
 
 if MODE == "REAL":
     from k8s_agent_sandbox import SandboxClient
-    from k8s_agent_sandbox.models import SandboxGatewayConnectionConfig
 
 # In-Memory State
 # sandbox_id -> { "status": "Running" | "Sleeping", "pod_ip": "..." }
@@ -37,7 +36,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 @app.post("/api/sandboxes")
-async def create_sandbox():
+async def create_sandbox(background_tasks: BackgroundTasks):
     sandbox_id = f"sb-{uuid.uuid4().hex[:8]}"
     
     if MODE == "MOCK":
@@ -50,22 +49,38 @@ async def create_sandbox():
     elif MODE == "REAL":
         try:
             client_instance = SandboxClient(
-                connection_config=SandboxGatewayConnectionConfig(
-                    gateway_name=GATEWAY_NAME,
-                )
+                template_name="agent-sandbox-template",
+                gateway_name=GATEWAY_NAME,
+                namespace="default",
+                server_port=8000
             )
-            # Create sandbox using client
-            # We assume the template exists as per infra manifests
-            sandbox = client_instance.create_sandbox(template="agent-sandbox-template", namespace="default")
             
             sandboxes[sandbox_id] = {
                 "status": "Provisioning",
-                "client_sandbox": sandbox
+                "client_instance": client_instance
             }
+            
+            def create_and_wait():
+                print(f"[{sandbox_id}] Starting async sandbox creation...")
+                try:
+                    print(f"[{sandbox_id}] Creating SandboxClaim...")
+                    client_instance._create_claim()
+                    print(f"[{sandbox_id}] Waiting for Sandbox to be ready...")
+                    client_instance._wait_for_sandbox_ready()
+                    print(f"[{sandbox_id}] Waiting for Gateway IP...")
+                    client_instance._wait_for_gateway_ip()
+                    
+                    sandboxes[sandbox_id]["status"] = "Running"
+                    print(f"[{sandbox_id}] Sandbox is now Running.")
+                except Exception as e:
+                    sandboxes[sandbox_id]["status"] = "Error"
+                    print(f"[{sandbox_id}] Error in background creation: {e}")
+            
+            background_tasks.add_task(create_and_wait)
             
             return {"sandbox_id": sandbox_id, "status": "Provisioning"}
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to create Sandbox via client: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Failed to initiate Sandbox creation: {str(e)}")
 
 @app.get("/api/sandboxes")
 async def list_sandboxes():
@@ -88,19 +103,15 @@ async def send_message(sandbox_id: str, payload: MessagePayload):
         return {"reply": f"[{sandbox_id}] {payload.message}"}
         
     elif MODE == "REAL":
-        client_sandbox = sandbox.get("client_sandbox")
-        if not client_sandbox:
-             raise HTTPException(status_code=500, detail="Client sandbox instance not found")
+        client_instance = sandbox.get("client_instance")
+        if not client_instance:
+             raise HTTPException(status_code=500, detail="Client instance not found")
              
-        # Run curl command inside sandbox to call the Demo App
-        import json
-        cmd = f"curl -s -X POST http://localhost:8000/message -H 'Content-Type: application/json' -d '{{\"message\": \"{payload.message}\"}}'"
         try:
-            result = client_sandbox.commands.run(cmd)
-            reply_data = json.loads(result.stdout)
-            return reply_data
+            response = client_instance._request("POST", "message", json={"message": payload.message})
+            return response.json()
         except Exception as e:
-             raise HTTPException(status_code=500, detail=f"Failed to run command in sandbox: {str(e)}")
+             raise HTTPException(status_code=500, detail=f"Failed to route message via client: {str(e)}")
 
 @app.get("/api/sandboxes/{sandbox_id}/quote")
 async def get_quote(sandbox_id: str):
@@ -112,19 +123,15 @@ async def get_quote(sandbox_id: str):
         return {"quote": f"[{sandbox_id}] Simulated quote: The only way to do great work is to love what you do."}
         
     elif MODE == "REAL":
-        client_sandbox = sandboxes[sandbox_id].get("client_sandbox")
-        if not client_sandbox:
-             raise HTTPException(status_code=500, detail="Client sandbox instance not found")
+        client_instance = sandboxes[sandbox_id].get("client_instance")
+        if not client_instance:
+             raise HTTPException(status_code=500, detail="Client instance not found")
              
-        # Run curl command inside sandbox to call the Demo App
-        import json
-        cmd = "curl -s http://localhost:8000/quote"
         try:
-            result = client_sandbox.commands.run(cmd)
-            reply_data = json.loads(result.stdout)
-            return reply_data
+            response = client_instance._request("GET", "quote")
+            return response.json()
         except Exception as e:
-             raise HTTPException(status_code=500, detail=f"Failed to run command in sandbox: {str(e)}")
+             raise HTTPException(status_code=500, detail=f"Failed to get quote via client: {str(e)}")
 
 @app.post("/api/sandboxes/{sandbox_id}/sleep")
 async def sleep_sandbox(sandbox_id: str):

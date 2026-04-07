@@ -35,19 +35,20 @@ document.addEventListener('DOMContentLoaded', () => {
         sandboxes.forEach(sb => {
             const card = document.createElement('div');
             card.className = 'card';
+            const isProvisioning = sb.status === 'Provisioning';
             card.innerHTML = `
                 <h3>Sandbox: ${sb.sandbox_id}</h3>
                 <div class="card-row status-row">
                     <div class="status ${sb.status.toLowerCase()}">${sb.status}</div>
                     <div class="input-group compact">
-                        <input type="text" id="input-${sb.sandbox_id}" placeholder="Message...">
-                        <button class="btn primary send-btn" data-id="${sb.sandbox_id}">Send</button>
+                        <input type="text" id="input-${sb.sandbox_id}" placeholder="Message..." ${isProvisioning ? 'disabled' : ''}>
+                        <button class="btn primary send-btn" data-id="${sb.sandbox_id}" ${isProvisioning ? 'disabled' : ''}>Send</button>
                     </div>
                 </div>
                 <div class="card-actions">
-                    <button class="btn secondary sleep-btn" data-id="${sb.sandbox_id}" ${sb.status === 'Sleeping' ? 'disabled' : ''}>Sleep</button>
-                    <button class="btn secondary wake-btn" data-id="${sb.sandbox_id}" ${sb.status === 'Running' ? 'disabled' : ''}>Wake</button>
-                    <button class="btn secondary quote-btn" data-id="${sb.sandbox_id}">Quote</button>
+                    <button class="btn secondary sleep-btn" data-id="${sb.sandbox_id}" ${sb.status === 'Sleeping' || isProvisioning ? 'disabled' : ''}>Sleep</button>
+                    <button class="btn secondary wake-btn" data-id="${sb.sandbox_id}" ${sb.status === 'Running' || isProvisioning ? 'disabled' : ''}>Wake</button>
+                    <button class="btn secondary quote-btn" data-id="${sb.sandbox_id}" ${isProvisioning ? 'disabled' : ''}>Quote</button>
                     <button class="btn danger delete-btn" data-id="${sb.sandbox_id}">Delete</button>
                 </div>
                 <div class="last-message-area" id="last-message-${sb.sandbox_id}">
