@@ -88,11 +88,15 @@ Ensure your `.env` file has the correct values:
 
 ### Step 2: Build and Push Images
 
-Run the deployment script. It will create the Artifact Registry repository if it doesn't exist, build the Docker images, and push them.
+1.  **Build and Push Application Images**: Run the deployment script to create the Artifact Registry repo and push `demo-app` and `main-app` images:
+    ```bash
+    ./deploy.sh
+    ```
 
-```bash
-./deploy.sh
-```
+2.  **Build and Push Sandbox Router Image**: Run the helper script to clone the upstream repository (one level above root), build the router image, and push it to your registry:
+    ```bash
+    ./deploy_sandbox_router.sh
+    ```
 
 ### Step 3: Provision Infrastructure
 
