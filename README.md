@@ -86,6 +86,9 @@ Ensure your `.env` file has the correct values:
 -   `PROJECT_NAME`: Your real GCP Project ID.
 -   `REGION`: The region where you want to deploy (e.g., `us-west1`).
 
+> [!IMPORTANT]
+> When running in **REAL** mode on GKE without Workload Identity, you must grant the **Vertex AI User** (`roles/aiplatform.user`) role to the default Compute Engine service account to allow the applications in the sandboxes to access Vertex AI.
+
 ### Step 2: Build and Push Images
 
 1.  **Build and Push Application Images**: Run the deployment script to create the Artifact Registry repo and push `demo-app` and `main-app` images:
@@ -100,7 +103,7 @@ Ensure your `.env` file has the correct values:
 
 ### Step 3: Provision Infrastructure
 
-Run the infrastructure script. It will create a GKE Standard cluster with a gVisor node pool, enable the Agent Sandbox feature, and apply the templates using `envsubst` to inject your environment variables.
+Run the infrastructure script. It will create a GKE Standard cluster with a gVisor node pool, enable the Agent Sandbox feature, and apply the templates using `envsubst` to inject your environment variables. Note that `build_infra.sh` has been updated to load environment variables more robustly.
 
 ```bash
 ./build_infra.sh
