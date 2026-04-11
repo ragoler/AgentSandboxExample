@@ -9,13 +9,18 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
+
+import sys
+sys.path.append(str(Path(__file__).parent))
 
 MODE = os.environ.get("MODE", "MOCK").upper()
 GATEWAY_NAME = os.environ.get("GATEWAY_NAME", "external-http-gateway")
 
 if MODE == "REAL":
     from k8s_agent_sandbox import SandboxClient
+elif MODE == "MOCK":
+    from mock_sandbox import MockSandboxClient
 
 # In-Memory State
 # sandbox_id -> { "status": "Running" | "Sleeping", "pod_ip": "..." }
@@ -40,9 +45,10 @@ async def create_sandbox(background_tasks: BackgroundTasks):
     sandbox_id = f"sb-{uuid.uuid4().hex[:8]}"
     
     if MODE == "MOCK":
+        client_instance = MockSandboxClient(sandbox_id)
         sandboxes[sandbox_id] = {
             "status": "Running",
-            "pod_ip": "127.0.0.1"
+            "client_instance": client_instance
         }
         return {"sandbox_id": sandbox_id, "status": "Running"}
         
@@ -98,40 +104,41 @@ async def send_message(sandbox_id: str, payload: MessagePayload):
         await wake_sandbox(sandbox_id)
         sandbox["status"] = "Running"
     
-    if MODE == "MOCK":
-        # Simulate demo-app behavior (reply with sandbox ID)
-        return {"reply": f"[{sandbox_id}] {payload.message}"}
-        
-    elif MODE == "REAL":
-        client_instance = sandbox.get("client_instance")
-        if not client_instance:
-             raise HTTPException(status_code=500, detail="Client instance not found")
-             
-        try:
-            response = client_instance._request("POST", "message", json={"message": payload.message})
-            return response.json()
-        except Exception as e:
-             raise HTTPException(status_code=500, detail=f"Failed to route message via client: {str(e)}")
+    client_instance = sandbox.get("client_instance")
+    if not client_instance:
+         raise HTTPException(status_code=500, detail="Client instance not found")
+         
+    try:
+        print(f"[{sandbox_id}] Routing message to client...")
+        response = client_instance._request("POST", "message", json={"message": payload.message})
+        print(f"[{sandbox_id}] Message routed successfully.")
+        return response.json()
+    except Exception as e:
+         raise HTTPException(status_code=500, detail=f"Failed to route message via client: {str(e)}")
 
 @app.get("/api/sandboxes/{sandbox_id}/quote")
 async def get_quote(sandbox_id: str):
     if sandbox_id not in sandboxes:
         raise HTTPException(status_code=404, detail="Sandbox not found")
     
-    if MODE == "MOCK":
-        # Simulate demo-app behavior
-        return {"quote": f"[{sandbox_id}] Simulated quote: The only way to do great work is to love what you do."}
-        
-    elif MODE == "REAL":
-        client_instance = sandboxes[sandbox_id].get("client_instance")
-        if not client_instance:
-             raise HTTPException(status_code=500, detail="Client instance not found")
-             
-        try:
-            response = client_instance._request("GET", "quote")
-            return response.json()
-        except Exception as e:
-             raise HTTPException(status_code=500, detail=f"Failed to get quote via client: {str(e)}")
+    sandbox = sandboxes[sandbox_id]
+    
+    if sandbox["status"] == "Sleeping":
+        print(f"Sandbox {sandbox_id} is sleeping. Waking up first.")
+        await wake_sandbox(sandbox_id)
+        sandbox["status"] = "Running"
+    
+    client_instance = sandbox.get("client_instance")
+    if not client_instance:
+         raise HTTPException(status_code=500, detail="Client instance not found")
+         
+    try:
+        print(f"[{sandbox_id}] Getting quote from client...")
+        response = client_instance._request("GET", "quote")
+        print(f"[{sandbox_id}] Quote retrieved successfully.")
+        return response.json()
+    except Exception as e:
+         raise HTTPException(status_code=500, detail=f"Failed to get quote via client: {str(e)}")
 
 @app.post("/api/sandboxes/{sandbox_id}/sleep")
 async def sleep_sandbox(sandbox_id: str):
@@ -165,19 +172,17 @@ async def delete_sandbox(sandbox_id: str):
     if sandbox_id not in sandboxes:
         raise HTTPException(status_code=404, detail="Sandbox not found")
     
-    if MODE == "MOCK":
-        del sandboxes[sandbox_id]
-        return {"status": "Deleted"}
-        
-    elif MODE == "REAL":
-        client_sandbox = sandboxes[sandbox_id].get("client_sandbox")
-        if client_sandbox:
-            try:
-                client_sandbox.terminate()
-            except Exception as e:
-                 print(f"Error terminating sandbox: {e}")
-        del sandboxes[sandbox_id]
-        return {"status": "Deleted"}
+    sandbox = sandboxes[sandbox_id]
+    client_instance = sandbox.get("client_instance")
+    
+    if client_instance:
+        try:
+            client_instance.terminate()
+        except Exception as e:
+             print(f"Error terminating sandbox: {e}")
+             
+    del sandboxes[sandbox_id]
+    return {"status": "Deleted"}
 
 # Mount Static Files for Frontend
 current_dir = Path(__file__).parent

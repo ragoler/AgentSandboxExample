@@ -57,3 +57,18 @@ def test_sleep_wake_mock():
     assert response.status_code == 200
     assert response.json()["reply"] == f"[{sb_id}] Wake up"
     assert sandboxes[sb_id]["status"] == "Running"
+
+def test_get_quote_while_sleeping_mock():
+    sandboxes.clear()
+    create_resp = client.post("/api/sandboxes")
+    sb_id = create_resp.json()["sandbox_id"]
+    
+    # Sleep
+    client.post(f"/api/sandboxes/{sb_id}/sleep")
+    assert sandboxes[sb_id]["status"] == "Sleeping"
+    
+    # Quote while sleeping should auto-wake
+    response = client.get(f"/api/sandboxes/{sb_id}/quote")
+    assert response.status_code == 200
+    assert "quote" in response.json()
+    assert sandboxes[sb_id]["status"] == "Running"

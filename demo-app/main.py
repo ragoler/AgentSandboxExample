@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, Header
 from pydantic import BaseModel
 import vertexai
 from vertexai.generative_models import GenerativeModel
@@ -21,14 +21,12 @@ else:
 
 model = GenerativeModel("gemini-2.5-flash")
 
-sandbox_id = os.environ.get("SANDBOX_ID", "UNKNOWN_SANDBOX")
-
 class MessagePayload(BaseModel):
     message: str
 
 @app.post("/message")
-async def reply_message(payload: MessagePayload):
-    return {"reply": f"[{sandbox_id}] {payload.message}"}
+async def reply_message(payload: MessagePayload, x_sandbox_id: str = Header(default="UNKNOWN_SANDBOX")):
+    return {"reply": f"[{x_sandbox_id}] {payload.message}"}
 
 @app.get("/quote")
 async def get_quote():
