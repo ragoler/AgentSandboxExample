@@ -8,7 +8,7 @@ It consists of a Main Application (orchestrator with UI) and a Demo Application 
 
 -   `main-app/`: The control plane application (FastAPI) and UI.
 -   `demo-app/`: The lightweight application (FastAPI) that runs inside the sandboxes.
--   `infra/`: Kubernetes manifests for `SandboxTemplate`, `SandboxWarmPool`, and `Gateway`.
+-   `infra/`: Kubernetes manifests for `SandboxTemplate`, `SandboxWarmPool`, `Gateway`, `HTTPRoute`, and `HealthCheckPolicy`.
 -   `build_infra.sh`: Script to provision the GKE cluster and apply manifests.
 -   `deploy.sh`: Script to build and push Docker images to Artifact Registry.
 
@@ -63,14 +63,14 @@ You can also run the Demo App directly to verify its endpoints:
 export GOOGLE_CLOUD_PROJECT="YOUR_PROJECT_ID"
 export REGION="us-west1"
 
-# Run the app on a different port
-uvicorn demo-app.main:app --host 127.0.0.1 --port 8001 --reload
+# Run the app on the standard sandbox port
+uvicorn demo-app.main:app --host 127.0.0.1 --port 8888 --reload
 ```
 
 Test with curl:
 ```bash
-curl -X POST http://127.0.0.1:8001/message -H "Content-Type: application/json" -d '{"message": "Hello"}'
-curl http://127.0.0.1:8001/quote
+curl -X POST http://127.0.0.1:8888/message -H "Content-Type: application/json" -d '{"message": "Hello"}'
+curl http://127.0.0.1:8888/quote
 ```
 
 ---
