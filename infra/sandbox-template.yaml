@@ -10,11 +10,29 @@ spec:
         app: demo-agent
     spec:
       runtimeClassName: gvisor # Enforce gVisor sandbox
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+      nodeSelector:
+        sandbox.gke.io/runtime: gvisor
+      tolerations:
+      - key: sandbox.gke.io/runtime
+        operator: Equal
+        value: gvisor
+        effect: NoSchedule
       containers:
       - name: demo-app
         image: ${REGION}-docker.pkg.dev/${PROJECT_NAME}/agent-sandbox-repo/demo-app:latest
         ports:
-        - containerPort: 8000
+        - containerPort: 8888
+        securityContext:
+          capabilities:
+            drop: ["ALL"]
+        env:
+        - name: GOOGLE_CLOUD_PROJECT
+          value: "${PROJECT_NAME}"
+        - name: REGION
+          value: "${REGION}"
         resources:
           requests:
             cpu: "250m"

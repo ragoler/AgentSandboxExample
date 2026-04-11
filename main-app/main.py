@@ -52,7 +52,7 @@ async def create_sandbox(background_tasks: BackgroundTasks):
                 template_name="agent-sandbox-template",
                 gateway_name=GATEWAY_NAME,
                 namespace="default",
-                server_port=8000
+                server_port=8888
             )
             
             sandboxes[sandbox_id] = {

@@ -3,6 +3,8 @@ apiVersion: v1
 kind: Service
 metadata:
   name: sandbox-router-svc
+  annotations:
+    cloud.google.com/health-check: '{"path": "/healthz"}'
 spec:
   type: ClusterIP
   selector:

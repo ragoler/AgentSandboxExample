@@ -12,15 +12,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let activeSandboxId = null;
     const lastMessages = {}; // Store last message per sandbox
+    let isInitialLoad = true;
 
     async function fetchSandboxes() {
-        grid.innerHTML = '<div class="card skeleton">Loading sandboxes...</div>';
+        if (isInitialLoad) {
+            grid.innerHTML = '<div class="card skeleton">Loading sandboxes...</div>';
+            isInitialLoad = false;
+        }
+
+        // Save inputs to prevent losing text during re-render
+        const savedInputs = {};
+        document.querySelectorAll('input[type="text"]').forEach(input => {
+            savedInputs[input.id] = input.value;
+        });
+
         try {
             const response = await fetch('/api/sandboxes');
             const data = await response.json();
             renderSandboxes(data);
+
+            // Restore inputs
+            Object.keys(savedInputs).forEach(id => {
+                const input = document.getElementById(id);
+                if (input) input.value = savedInputs[id];
+            });
         } catch (error) {
-            grid.innerHTML = '<div class="card error">Failed to load sandboxes.</div>';
+            if (grid.innerHTML === '') {
+                grid.innerHTML = '<div class="card error">Failed to load sandboxes.</div>';
+            }
             console.error(error);
         }
     }
@@ -148,4 +167,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initial load
     fetchSandboxes();
+
+    // Poll for updates every 5 seconds
+    setInterval(fetchSandboxes, 5000);
 });
+

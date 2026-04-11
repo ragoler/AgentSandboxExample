@@ -5,7 +5,9 @@ set -e
 
 # Load environment variables from .env if it exists
 if [ -f .env ]; then
-  export $(cat .env | grep -v '^#' | xargs)
+  set -a
+  source .env
+  set +a
 fi
 
 # Define variables
@@ -69,10 +71,20 @@ fi
 echo "Getting cluster credentials..."
 gcloud container clusters get-credentials "$CLUSTER_NAME" --region "$REGION"
 
+echo "Granting Vertex AI User role to default Compute Engine service account..."
+PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format="value(projectNumber)")
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+    --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+    --role="roles/aiplatform.user"
+
 echo "Applying Kubernetes manifests..."
+export PROJECT_NAME
+export REGION
 python3 -c "import os, sys; print(os.path.expandvars(sys.stdin.read()))" < infra/sandbox-template.yaml | kubectl apply -f -
 python3 -c "import os, sys; print(os.path.expandvars(sys.stdin.read()))" < infra/sandbox-router.yaml | kubectl apply -f -
 kubectl apply -f infra/sandbox-warmpool.yaml
 kubectl apply -f infra/gateway.yaml
+kubectl apply -f infra/http-route.yaml
+kubectl apply -f infra/health-check-policy.yaml
 
 echo "Infrastructure build complete!"
