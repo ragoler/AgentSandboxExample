@@ -83,6 +83,11 @@ header p {
     background: rgba(255, 255, 255, 0.1);
 }
 
+.btn.secondary:active {
+    transform: scale(0.95);
+    background: rgba(255, 255, 255, 0.15);
+}
+
 .btn.danger {
     background: linear-gradient(135deg, #ef4444, #b91c1c);
     color: white;

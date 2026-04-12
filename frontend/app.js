@@ -152,13 +152,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 const id = e.target.dataset.id;
                 const messageContent = document.getElementById(`message-content-${id}`);
                 
+                const originalText = btn.textContent;
+                btn.disabled = true;
+                btn.textContent = 'Loading...';
+                
                 try {
                     const response = await fetch(`/api/sandboxes/${id}/quote`);
                     const data = await response.json();
-                    lastMessages[id] = `Quote: ${data.quote}`;
+                    console.log(`[${id}] Quote response:`, data);
+                    lastMessages[id] = `Quote: ${data.quote || 'No quote available'}`;
                     fetchSandboxes(); // Refresh status card
                 } catch (error) {
                     messageContent.textContent = 'Error: Failed to get quote.';
+                    btn.disabled = false;
+                    btn.textContent = originalText;
                 }
             });
         });
