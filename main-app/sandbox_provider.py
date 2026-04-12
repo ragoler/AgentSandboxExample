@@ -29,7 +29,7 @@ if MODE == "REAL":
             health_ok = False
             consecutive_successes = 0
             time.sleep(1.0)
-            for _ in range(300):
+            for _ in range(600):
                 try:
                     response = self.client._request("GET", "healthz")
                     if response.status_code == 200:
@@ -72,10 +72,52 @@ if MODE == "REAL":
                  print(f"Failed to delete SandboxClaim {self.client.claim_name}: {e}")
 
         def sleep(self):
-             raise NotImplementedError("Sleep not implemented for Real mode yet")
+             try:
+                 config.load_kube_config()
+                 api = client.CustomObjectsApi()
+                 body = {
+                     "metadata": {
+                         "labels": {
+                             "extensions.agents.x-k8s.io/state": "sleeping"
+                         }
+                     }
+                 }
+                 api.patch_namespaced_custom_object(
+                     group="extensions.agents.x-k8s.io",
+                     version="v1alpha1",
+                     namespace="default",
+                     plural="sandboxclaims",
+                     name=self.client.claim_name,
+                     body=body
+                 )
+                 return "Sleeping"
+             except Exception as e:
+                 print(f"Failed to sleep sandbox {self.sandbox_id}: {e}")
+                 raise e
 
         def wake(self):
-             raise NotImplementedError("Wake not implemented for Real mode yet")
+             try:
+                 config.load_kube_config()
+                 api = client.CustomObjectsApi()
+                 body = {
+                     "metadata": {
+                         "labels": {
+                             "extensions.agents.x-k8s.io/state": "running"
+                         }
+                     }
+                 }
+                 api.patch_namespaced_custom_object(
+                     group="extensions.agents.x-k8s.io",
+                     version="v1alpha1",
+                     namespace="default",
+                     plural="sandboxclaims",
+                     name=self.client.claim_name,
+                     body=body
+                 )
+                 return "Running"
+             except Exception as e:
+                 print(f"Failed to wake sandbox {self.sandbox_id}: {e}")
+                 raise e
 
     def get_client(sandbox_id):
         return RealSandboxWrapper(sandbox_id)
@@ -122,9 +164,16 @@ if MODE == "REAL":
             total = len(items)
             running = 0
             provisioning = 0
+            sleeping = 0
             error = 0
             
             for claim in items:
+                metadata = claim.get('metadata', {})
+                labels = metadata.get('labels', {})
+                if labels.get('extensions.agents.x-k8s.io/state') == 'sleeping':
+                    sleeping += 1
+                    continue
+                    
                 status = claim.get('status', {})
                 conditions = status.get('conditions', [])
                 is_ready = False
@@ -147,7 +196,7 @@ if MODE == "REAL":
                 "total": total,
                 "running": running,
                 "provisioning": provisioning,
-                "sleeping": 0,
+                "sleeping": sleeping,
                 "error": error
             }
         except Exception as e:
