@@ -100,9 +100,7 @@ async def get_quote(sandbox_id: str):
     sandbox = sandboxes[sandbox_id]
     
     if sandbox["status"] == "Sleeping":
-        print(f"Sandbox {sandbox_id} is sleeping. Waking up first.")
-        await wake_sandbox(sandbox_id)
-        sandbox["status"] = "Running"
+        raise HTTPException(status_code=400, detail="Sandbox is sleeping. Please wake it up first.")
     
     client_instance = sandbox.get("client_instance")
     if not client_instance:

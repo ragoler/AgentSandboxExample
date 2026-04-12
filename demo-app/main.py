@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI, Header
+from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 import vertexai
 from vertexai.generative_models import GenerativeModel
@@ -34,7 +34,7 @@ async def get_quote():
         response = model.generate_content("Provide a short, inspiring quote of the day.")
         return {"quote": response.text}
     except Exception as e:
-        return {"error": str(e)}, 500
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/healthz")
 async def healthz():

@@ -14,4 +14,7 @@ while true; do
     sleep 2
 done
 
+echo "Deleting warm pool pods..."
+kubectl delete pods -l app=demo-agent --ignore-not-found
+
 echo "Cleanup complete."
