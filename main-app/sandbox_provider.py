@@ -9,6 +9,12 @@ if MODE == "REAL":
     from k8s_agent_sandbox import SandboxClient
     from kubernetes import client, config
     
+    def load_k8s_config():
+        try:
+            config.load_incluster_config()
+        except config.ConfigException:
+            config.load_kube_config()
+            
     class RealSandboxWrapper:
         def __init__(self, sandbox_id):
             self.sandbox_id = sandbox_id
@@ -55,10 +61,7 @@ if MODE == "REAL":
              
         def terminate(self):
              try:
-                 with open("debug.txt", "a") as f:
-                     f.write(f"base_url: {self.client.base_url}\n")
-                     
-                 config.load_kube_config()
+                 load_k8s_config()
                  api = client.CustomObjectsApi()
                  api.delete_namespaced_custom_object(
                      group="extensions.agents.x-k8s.io",
@@ -73,7 +76,7 @@ if MODE == "REAL":
 
         def sleep(self):
              try:
-                 config.load_kube_config()
+                 load_k8s_config()
                  api = client.CustomObjectsApi()
                  body = {
                      "metadata": {
@@ -97,7 +100,7 @@ if MODE == "REAL":
 
         def wake(self):
              try:
-                 config.load_kube_config()
+                 load_k8s_config()
                  api = client.CustomObjectsApi()
                  body = {
                      "metadata": {
@@ -125,7 +128,7 @@ if MODE == "REAL":
     def cleanup_all():
         print("Cleaning up SandboxClaims in Kubernetes...")
         try:
-            config.load_kube_config()
+            load_k8s_config()
             api = client.CustomObjectsApi()
             claims = api.list_namespaced_custom_object(
                 group="extensions.agents.x-k8s.io",
@@ -152,7 +155,7 @@ if MODE == "REAL":
 
     def get_stats(sandboxes_dict=None):
         try:
-            config.load_kube_config()
+            load_k8s_config()
             api = client.CustomObjectsApi()
             claims = api.list_namespaced_custom_object(
                 group="extensions.agents.x-k8s.io",

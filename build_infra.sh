@@ -104,4 +104,7 @@ kubectl apply -f infra/gateway.yaml
 kubectl apply -f infra/http-route.yaml
 kubectl apply -f infra/health-check-policy.yaml
 
+echo "Applying Main Application manifests..."
+python3 -c "import os, sys; print(os.path.expandvars(sys.stdin.read()))" < infra/main-app.yaml | kubectl apply -f -
+
 echo "Infrastructure build complete!"
