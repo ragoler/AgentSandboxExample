@@ -44,9 +44,11 @@ pip install --index-url https://pypi.org/simple -r demo-app/requirements.txt
     ```env
     MODE=MOCK
     GATEWAY_NAME=external-http-gateway
-    CLUSTER_NAME=agent-sandbox-cluster
+    CLUSTER_NAME=agent-sandbox-cluster2
     REGION=us-west1
     PROJECT_NAME=YOUR_PROJECT_ID
+    GEMINI_API_KEY=YOUR_GEMINI_API_KEY
+    GOOGLE_GENAI_USE_VERTEXAI=FALSE
     ```
 2.  Run the application:
     ```bash
@@ -59,9 +61,9 @@ pip install --index-url https://pypi.org/simple -r demo-app/requirements.txt
 You can also run the Demo App directly to verify its endpoints:
 
 ```bash
-# Set required env vars for Vertex AI
-export GOOGLE_CLOUD_PROJECT="YOUR_PROJECT_ID"
-export REGION="us-west1"
+# Set required env vars
+export GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
+export GOOGLE_GENAI_USE_VERTEXAI="FALSE"
 
 # Run the app on the standard sandbox port
 uvicorn demo-app.main:app --host 127.0.0.1 --port 8888 --reload
@@ -85,12 +87,16 @@ Ensure your `.env` file has the correct values:
 -   `MODE=REAL`
 -   `PROJECT_NAME`: Your real GCP Project ID.
 -   `REGION`: The region where you want to deploy (e.g., `us-west1`).
+-   `GEMINI_API_KEY`: Your Gemini API Key.
+-   `GOOGLE_GENAI_USE_VERTEXAI`: Set to `FALSE` to use Gemini API Key, or `TRUE` to use Vertex AI.
 
 > [!IMPORTANT]
-> We use **Workload Identity** to allow applications in the sandboxes to access Vertex AI. 
-> The `build_infra.sh` script automatically binds the `default` Kubernetes Service Account in the `default` namespace to a Google Service Account (GSA).
-> By default, it expects a GSA named `dbagent-gsa`. You must ensure this GSA exists and has the **Vertex AI User** (`roles/aiplatform.user`) role bound to it in IAM.
-> You can override the GSA name by setting `GSA_NAME` in your environment before running `build_infra.sh`.
+> In a gVisor sandboxed environment on GKE, access to the GKE Metadata Server is blocked by default. This prevents standard Workload Identity from working out-of-the-box without a proxy.
+> 
+> To bypass this constraint, we use a **Gemini API Key** for authentication within the sandbox.
+> The `build_infra.sh` script automatically creates a Kubernetes Secret named `gemini-api-key` from the `GEMINI_API_KEY` variable in your `.env` file, and mounts it into the sandbox pods.
+> 
+> If you prefer to use Vertex AI (and have configured a metadata proxy or other method), you can set `GOOGLE_GENAI_USE_VERTEXAI=TRUE` in your `.env` file.
 
 ### Step 2: Build and Push Images
 
