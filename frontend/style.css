@@ -99,6 +99,15 @@ header p {
     box-shadow: 0 10px 15px -3px rgba(239, 68, 68, 0.4);
 }
 
+.btn:disabled {
+    background: rgba(255, 255, 255, 0.05) !important;
+    color: rgba(255, 255, 255, 0.3) !important;
+    cursor: not-allowed;
+    box-shadow: none !important;
+    transform: none !important;
+    border-color: rgba(255, 255, 255, 0.05) !important;
+}
+
 .sandbox-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));

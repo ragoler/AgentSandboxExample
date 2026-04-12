@@ -33,6 +33,12 @@ spec:
           value: "${PROJECT_NAME}"
         - name: REGION
           value: "${REGION}"
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: gemini-api-key
+              key: GEMINI_API_KEY
+
         resources:
           requests:
             cpu: "250m"
@@ -40,4 +46,5 @@ spec:
           limits:
             cpu: "500m"
             memory: "1Gi"
-        restartPolicy: OnFailure
+      restartPolicy: OnFailure
+

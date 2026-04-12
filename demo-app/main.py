@@ -1,8 +1,7 @@
 import os
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
-import vertexai
-from vertexai.generative_models import GenerativeModel
+from google import genai
 from dotenv import load_dotenv
 import asyncio
 import logging
@@ -14,17 +13,9 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-# Initialize Vertex AI
-# We assume GOOGLE_CLOUD_PROJECT and REGION are set in the environment or .env file.
-project_id = os.environ.get("GOOGLE_CLOUD_PROJECT")
-region = os.environ.get("REGION")
-if project_id:
-    vertexai.init(project=project_id, location=region)
-else:
-    print("Warning: GOOGLE_CLOUD_PROJECT environment variable not set. Vertex AI might fail to initialize.")
-    vertexai.init(location=region)
-
-model = GenerativeModel("gemini-2.5-flash")
+# Initialize Gemini Client
+# It will automatically use GEMINI_API_KEY from the environment.
+client = genai.Client()
 
 class MessagePayload(BaseModel):
     message: str
@@ -37,13 +28,18 @@ async def reply_message(payload: MessagePayload, x_sandbox_id: str = Header(defa
 async def get_quote():
     logger.info("Received request for quote")
     try:
-        logger.info("Calling Vertex AI generate_content...")
+        logger.info("Calling Gemini generate_content...")
         loop = asyncio.get_running_loop()
+        def call_gemini():
+            return client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents="Provide a short, inspiring quote of the day."
+            )
         response = await asyncio.wait_for(
-            loop.run_in_executor(None, model.generate_content, "Provide a short, inspiring quote of the day."),
+            loop.run_in_executor(None, call_gemini),
             timeout=30.0
         )
-        logger.info("Vertex AI responded successfully")
+        logger.info("Gemini responded successfully")
         return {"quote": response.text}
     except asyncio.TimeoutError:
         logger.error("Vertex AI request timed out")

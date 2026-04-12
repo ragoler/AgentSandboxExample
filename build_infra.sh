@@ -35,7 +35,8 @@ else
   gcloud beta container clusters create "$CLUSTER_NAME" \
       --region="$REGION" \
       --cluster-version="$CLUSTER_VERSION" \
-      --no-enable-master-authorized-networks
+      --no-enable-master-authorized-networks \
+      --workload-pool="${PROJECT_ID}.svc.id.goog"
 fi
 
 if gcloud container node-pools describe "$NODE_POOL_NAME" --cluster="$CLUSTER_NAME" --region="$REGION" >/dev/null 2>&1; then
@@ -76,6 +77,22 @@ PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format="value(projectN
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
     --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
     --role="roles/aiplatform.user"
+
+echo "Configuring Workload Identity for sandboxes..."
+GSA_NAME=${GSA_NAME:-"dbagent-gsa"}
+GSA_EMAIL="$GSA_NAME@$PROJECT_ID.iam.gserviceaccount.com"
+KSA_NAME="default"
+NAMESPACE="default"
+
+gcloud iam service-accounts add-iam-policy-binding "$GSA_EMAIL" \
+    --role="roles/iam.workloadIdentityUser" \
+    --member="serviceAccount:$PROJECT_ID.svc.id.goog[$NAMESPACE/$KSA_NAME]"
+
+kubectl annotate serviceaccount "$KSA_NAME" --namespace "$NAMESPACE" \
+    iam.gke.io/gcp-service-account="$GSA_EMAIL" --overwrite
+
+echo "Creating Secret for demo app..."
+kubectl create secret generic gemini-api-key --from-literal=GEMINI_API_KEY="$GEMINI_API_KEY" --dry-run=client -o yaml | kubectl apply -f -
 
 echo "Applying Kubernetes manifests..."
 export PROJECT_NAME

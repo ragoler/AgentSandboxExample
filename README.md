@@ -87,7 +87,10 @@ Ensure your `.env` file has the correct values:
 -   `REGION`: The region where you want to deploy (e.g., `us-west1`).
 
 > [!IMPORTANT]
-> When running in **REAL** mode on GKE without Workload Identity, you must grant the **Vertex AI User** (`roles/aiplatform.user`) role to the default Compute Engine service account to allow the applications in the sandboxes to access Vertex AI.
+> We use **Workload Identity** to allow applications in the sandboxes to access Vertex AI. 
+> The `build_infra.sh` script automatically binds the `default` Kubernetes Service Account in the `default` namespace to a Google Service Account (GSA).
+> By default, it expects a GSA named `dbagent-gsa`. You must ensure this GSA exists and has the **Vertex AI User** (`roles/aiplatform.user`) role bound to it in IAM.
+> You can override the GSA name by setting `GSA_NAME` in your environment before running `build_infra.sh`.
 
 ### Step 2: Build and Push Images
 

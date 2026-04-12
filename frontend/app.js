@@ -86,7 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <button class="btn secondary sleep-btn" data-id="${sb.sandbox_id}" ${isSleeping || isProvisioning ? 'disabled' : ''}>Sleep</button>
                     <button class="btn secondary wake-btn" data-id="${sb.sandbox_id}" ${sb.status === 'Running' || isProvisioning ? 'disabled' : ''}>Wake</button>
                     <button class="btn secondary quote-btn" data-id="${sb.sandbox_id}" ${isDisabled ? 'disabled' : ''}>Quote</button>
-                    <button class="btn danger delete-btn" data-id="${sb.sandbox_id}">Delete</button>
+                    <button class="btn danger delete-btn" data-id="${sb.sandbox_id}" ${isProvisioning ? 'disabled' : ''}>Delete</button>
                 </div>
                 <div class="last-message-area" id="last-message-${sb.sandbox_id}">
                     <span class="label">Last Message:</span>
@@ -160,8 +160,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     const response = await fetch(`/api/sandboxes/${id}/quote`);
                     const data = await response.json();
                     console.log(`[${id}] Quote response:`, data);
-                    lastMessages[id] = `Quote: ${data.quote || 'No quote available'}`;
-                    fetchSandboxes(); // Refresh status card
+                    const quoteText = `Quote: ${data.quote || 'No quote available'}`;
+                    lastMessages[id] = quoteText;
+                    messageContent.textContent = quoteText;
+                    btn.textContent = originalText;
+                    btn.disabled = false;
                 } catch (error) {
                     messageContent.textContent = 'Error: Failed to get quote.';
                     btn.disabled = false;
