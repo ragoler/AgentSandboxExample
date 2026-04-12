@@ -44,8 +44,8 @@ pip install --index-url https://pypi.org/simple -r demo-app/requirements.txt
     ```env
     MODE=MOCK
     GATEWAY_NAME=external-http-gateway
-    CLUSTER_NAME=agent-sandbox-cluster2
-    REGION=us-west1
+    CLUSTER_NAME=YOUR_CLUSTER_NAME
+    REGION=YOUR_REGION
     PROJECT_NAME=YOUR_PROJECT_ID
     GEMINI_API_KEY=YOUR_GEMINI_API_KEY
     GOOGLE_GENAI_USE_VERTEXAI=FALSE
