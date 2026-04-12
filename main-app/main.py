@@ -1,5 +1,6 @@
 import os
 import uuid
+import time
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from typing import Dict, List
@@ -14,16 +15,10 @@ load_dotenv(override=True)
 import sys
 sys.path.append(str(Path(__file__).parent))
 
-MODE = os.environ.get("MODE", "MOCK").upper()
-GATEWAY_NAME = os.environ.get("GATEWAY_NAME", "external-http-gateway")
-
-if MODE == "REAL":
-    from k8s_agent_sandbox import SandboxClient
-elif MODE == "MOCK":
-    from mock_sandbox import MockSandboxClient
+from sandbox_provider import get_client, cleanup_all
 
 # In-Memory State
-# sandbox_id -> { "status": "Running" | "Sleeping", "pod_ip": "..." }
+# sandbox_id -> { "status": "Running" | "Sleeping", "client_instance": ... }
 sandboxes: Dict[str, dict] = {}
 
 class MessagePayload(BaseModel):
@@ -32,10 +27,8 @@ class MessagePayload(BaseModel):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("Application starting. Clearing all transient sandbox state.")
-    # In a real K8s environment, we might want to delete pods with a certain label here.
-    # For now, we just clear the in-memory dictionary.
     sandboxes.clear()
-    # TODO: Add logic to delete actual K8s pods if needed.
+    cleanup_all()
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -44,53 +37,37 @@ app = FastAPI(lifespan=lifespan)
 async def create_sandbox(background_tasks: BackgroundTasks):
     sandbox_id = f"sb-{uuid.uuid4().hex[:8]}"
     
-    if MODE == "MOCK":
-        client_instance = MockSandboxClient(sandbox_id)
-        sandboxes[sandbox_id] = {
-            "status": "Running",
-            "client_instance": client_instance
-        }
-        return {"sandbox_id": sandbox_id, "status": "Running"}
-        
-    elif MODE == "REAL":
-        try:
-            client_instance = SandboxClient(
-                template_name="agent-sandbox-template",
-                gateway_name=GATEWAY_NAME,
-                namespace="default",
-                server_port=8888
-            )
+    client_instance = get_client(sandbox_id)
+    
+    sandboxes[sandbox_id] = {
+        "status": "Provisioning",
+        "client_instance": client_instance,
+        "created_at": time.time()
+    }
+    
+    def create_and_wait():
+        print(f"[{sandbox_id}] Starting async sandbox creation...")
+        success = client_instance.create()
+        if success:
+            sandboxes[sandbox_id]["status"] = "Running"
+            sandboxes[sandbox_id]["duration"] = time.time() - sandboxes[sandbox_id]["created_at"]
+            print(f"[{sandbox_id}] Sandbox is now Running and healthy. Took {sandboxes[sandbox_id]['duration']:.2f}s")
+        else:
+            sandboxes[sandbox_id]["status"] = "Error"
+            print(f"[{sandbox_id}] Sandbox health check failed.")
             
-            sandboxes[sandbox_id] = {
-                "status": "Provisioning",
-                "client_instance": client_instance
-            }
-            
-            def create_and_wait():
-                print(f"[{sandbox_id}] Starting async sandbox creation...")
-                try:
-                    print(f"[{sandbox_id}] Creating SandboxClaim...")
-                    client_instance._create_claim()
-                    print(f"[{sandbox_id}] Waiting for Sandbox to be ready...")
-                    client_instance._wait_for_sandbox_ready()
-                    print(f"[{sandbox_id}] Waiting for Gateway IP...")
-                    client_instance._wait_for_gateway_ip()
-                    
-                    sandboxes[sandbox_id]["status"] = "Running"
-                    print(f"[{sandbox_id}] Sandbox is now Running.")
-                except Exception as e:
-                    sandboxes[sandbox_id]["status"] = "Error"
-                    print(f"[{sandbox_id}] Error in background creation: {e}")
-            
-            background_tasks.add_task(create_and_wait)
-            
-            return {"sandbox_id": sandbox_id, "status": "Provisioning"}
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to initiate Sandbox creation: {str(e)}")
+    background_tasks.add_task(create_and_wait)
+    
+    return {"sandbox_id": sandbox_id, "status": "Provisioning"}
 
 @app.get("/api/sandboxes")
 async def list_sandboxes():
-    return [{"sandbox_id": k, "status": v["status"]} for k, v in sandboxes.items()]
+    return [{"sandbox_id": k, "status": v["status"], "duration": v.get("duration")} for k, v in sandboxes.items()]
+
+@app.get("/api/stats")
+async def get_stats_endpoint():
+    from sandbox_provider import get_stats
+    return get_stats(sandboxes)
 
 @app.post("/api/sandboxes/{sandbox_id}/message")
 async def send_message(sandbox_id: str, payload: MessagePayload):
@@ -110,7 +87,7 @@ async def send_message(sandbox_id: str, payload: MessagePayload):
          
     try:
         print(f"[{sandbox_id}] Routing message to client...")
-        response = client_instance._request("POST", "message", json={"message": payload.message})
+        response = client_instance.request("POST", "message", json={"message": payload.message})
         print(f"[{sandbox_id}] Message routed successfully.")
         return response.json()
     except Exception as e:
@@ -134,7 +111,7 @@ async def get_quote(sandbox_id: str):
          
     try:
         print(f"[{sandbox_id}] Getting quote from client...")
-        response = client_instance._request("GET", "quote")
+        response = client_instance.request("GET", "quote")
         print(f"[{sandbox_id}] Quote retrieved successfully.")
         return response.json()
     except Exception as e:
@@ -145,27 +122,24 @@ async def sleep_sandbox(sandbox_id: str):
     if sandbox_id not in sandboxes:
         raise HTTPException(status_code=404, detail="Sandbox not found")
     
-    if MODE == "MOCK":
-        sandboxes[sandbox_id]["status"] = "Sleeping"
-        return {"status": "Sleeping"}
-        
-    elif MODE == "REAL":
-        # TODO: Implement documented sleep mechanism using client if available, or delete claim.
-        # README doesn't show sleep/wake explicitly.
-        raise HTTPException(status_code=501, detail="Sleep not implemented for Real mode yet")
+    try:
+        new_status = sandboxes[sandbox_id]["client_instance"].sleep()
+        sandboxes[sandbox_id]["status"] = new_status
+        return {"status": new_status}
+    except NotImplementedError as e:
+        raise HTTPException(status_code=501, detail=str(e))
 
 @app.post("/api/sandboxes/{sandbox_id}/wake")
 async def wake_sandbox(sandbox_id: str):
     if sandbox_id not in sandboxes:
         raise HTTPException(status_code=404, detail="Sandbox not found")
     
-    if MODE == "MOCK":
-        sandboxes[sandbox_id]["status"] = "Running"
-        return {"status": "Running"}
-        
-    elif MODE == "REAL":
-        # TODO: Implement documented wake mechanism using client.
-        raise HTTPException(status_code=501, detail="Wake not implemented for Real mode yet")
+    try:
+        new_status = sandboxes[sandbox_id]["client_instance"].wake()
+        sandboxes[sandbox_id]["status"] = new_status
+        return {"status": new_status}
+    except NotImplementedError as e:
+        raise HTTPException(status_code=501, detail=str(e))
 
 @app.delete("/api/sandboxes/{sandbox_id}")
 async def delete_sandbox(sandbox_id: str):

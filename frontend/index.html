@@ -6,7 +6,7 @@
     <title>Agent Sandbox Manager</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
-    <script src="app.js" defer></script>
+    <script src="app.js?v=3" defer></script>
 </head>
 <body>
     <div class="container">
@@ -26,6 +26,33 @@
                 <div class="card skeleton">Loading sandboxes...</div>
             </section>
         </main>
+        <footer>
+            <div class="stats-pane" id="stats-pane">
+                <h2>Cluster Statistics</h2>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <span class="stat-label">Total</span>
+                        <span class="stat-value" id="total-stats">0</span>
+                    </div>
+                    <div class="stat-item running">
+                        <span class="stat-label">Running</span>
+                        <span class="stat-value" id="running-stats">0</span>
+                    </div>
+                    <div class="stat-item provisioning">
+                        <span class="stat-label">Provisioning</span>
+                        <span class="stat-value" id="provisioning-stats">0</span>
+                    </div>
+                    <div class="stat-item sleeping">
+                        <span class="stat-label">Sleeping</span>
+                        <span class="stat-value" id="sleeping-stats">0</span>
+                    </div>
+                    <div class="stat-item error">
+                        <span class="stat-label">Error</span>
+                        <span class="stat-value" id="error-stats">0</span>
+                    </div>
+                </div>
+            </div>
+        </footer>
     </div>
 
 

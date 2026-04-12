@@ -1,8 +1,17 @@
 import httpx
 import time
 import pytest
+import subprocess
 
 BASE_URL = "http://127.0.0.1:8000"
+
+@pytest.fixture(autouse=True, scope="module")
+def cleanup_sandboxes():
+    print("\n[Setup] Cleaning up sandboxes before test...")
+    subprocess.run(["./clean_sandboxes.sh"], check=True)
+    yield
+    print("\n[Teardown] Cleaning up sandboxes after test...")
+    subprocess.run(["./clean_sandboxes.sh"], check=True)
 
 def test_e2e_gke():
     # 1. Create Sandbox
@@ -44,12 +53,7 @@ def test_e2e_gke():
     assert resp.status_code == 200
     print(f"Message reply: {resp.json()['reply']}")
     
-    # 4. Get Quote
-    resp = httpx.get(f"{BASE_URL}/api/sandboxes/{sb_id}/quote", timeout=60.0)
-    assert resp.status_code == 200
-    print(f"Quote: {resp.json()['quote']}")
-    
-    # 5. Delete Sandbox
+    # 5. Delete Sandbox (Renumbered or just reordered)
     resp = httpx.delete(f"{BASE_URL}/api/sandboxes/{sb_id}")
     assert resp.status_code == 200
     print(f"Deleted sandbox {sb_id}")

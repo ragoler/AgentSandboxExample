@@ -42,6 +42,21 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             console.error(error);
         }
+        fetchStats();
+    }
+
+    async function fetchStats() {
+        try {
+            const response = await fetch('/api/stats');
+            const data = await response.json();
+            document.getElementById('total-stats').innerText = data.total;
+            document.getElementById('running-stats').innerText = data.running;
+            document.getElementById('provisioning-stats').innerText = data.provisioning;
+            document.getElementById('sleeping-stats').innerText = data.sleeping;
+            document.getElementById('error-stats').innerText = data.error;
+        } catch (error) {
+            console.error("Failed to fetch stats:", error);
+        }
     }
 
     function renderSandboxes(sandboxes) {
@@ -55,6 +70,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const card = document.createElement('div');
             card.className = 'card';
             const isProvisioning = sb.status === 'Provisioning';
+            const lastMsg = lastMessages[sb.sandbox_id] || (sb.duration ? `Sandbox started in ${sb.duration.toFixed(2)}s` : 'None');
             card.innerHTML = `
                 <h3>Sandbox: ${sb.sandbox_id}</h3>
                 <div class="card-row status-row">
@@ -72,7 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
                 <div class="last-message-area" id="last-message-${sb.sandbox_id}">
                     <span class="label">Last Message:</span>
-                    <span class="content" id="message-content-${sb.sandbox_id}">${lastMessages[sb.sandbox_id] || 'None'}</span>
+                    <span class="content" id="message-content-${sb.sandbox_id}">${lastMsg}</span>
                 </div>
             `;
             grid.appendChild(card);
