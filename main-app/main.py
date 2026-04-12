@@ -66,12 +66,12 @@ async def list_sandboxes():
     return [{"sandbox_id": k, "status": v["status"], "duration": v.get("duration")} for k, v in sandboxes.items()]
 
 @app.get("/api/stats")
-async def get_stats_endpoint():
+def get_stats_endpoint():
     from sandbox_provider import get_stats
     return get_stats(sandboxes)
 
 @app.post("/api/sandboxes/{sandbox_id}/message")
-async def send_message(sandbox_id: str, payload: MessagePayload):
+def send_message(sandbox_id: str, payload: MessagePayload):
     if sandbox_id not in sandboxes:
         raise HTTPException(status_code=404, detail="Sandbox not found")
     
@@ -93,7 +93,7 @@ async def send_message(sandbox_id: str, payload: MessagePayload):
          raise HTTPException(status_code=500, detail=f"Failed to route message via client: {str(e)}")
 
 @app.get("/api/sandboxes/{sandbox_id}/quote")
-async def get_quote(sandbox_id: str):
+def get_quote(sandbox_id: str):
     if sandbox_id not in sandboxes:
         raise HTTPException(status_code=404, detail="Sandbox not found")
     
@@ -115,7 +115,7 @@ async def get_quote(sandbox_id: str):
          raise HTTPException(status_code=500, detail=f"Failed to get quote via client: {str(e)}")
 
 @app.post("/api/sandboxes/{sandbox_id}/sleep")
-async def sleep_sandbox(sandbox_id: str):
+def sleep_sandbox(sandbox_id: str):
     if sandbox_id not in sandboxes:
         raise HTTPException(status_code=404, detail="Sandbox not found")
     
@@ -127,7 +127,7 @@ async def sleep_sandbox(sandbox_id: str):
         raise HTTPException(status_code=501, detail=str(e))
 
 @app.post("/api/sandboxes/{sandbox_id}/wake")
-async def wake_sandbox(sandbox_id: str):
+def wake_sandbox(sandbox_id: str):
     if sandbox_id not in sandboxes:
         raise HTTPException(status_code=404, detail="Sandbox not found")
     
