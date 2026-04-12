@@ -15,7 +15,7 @@ def cleanup_sandboxes():
 
 def test_e2e_gke():
     # 1. Create Sandbox
-    resp = httpx.post(f"{BASE_URL}/api/sandboxes")
+    resp = httpx.post(f"{BASE_URL}/api/sandboxes", timeout=120.0)
     assert resp.status_code == 200
     data = resp.json()
     sb_id = data["sandbox_id"]
@@ -27,7 +27,7 @@ def test_e2e_gke():
     ready = False
     
     while time.time() - start_time < timeout:
-        resp = httpx.get(f"{BASE_URL}/api/sandboxes")
+        resp = httpx.get(f"{BASE_URL}/api/sandboxes", timeout=10.0)
         assert resp.status_code == 200
         sandboxes = resp.json()
         
@@ -53,7 +53,12 @@ def test_e2e_gke():
     assert resp.status_code == 200
     print(f"Message reply: {resp.json()['reply']}")
     
+    # 4. Get Quote
+    resp = httpx.get(f"{BASE_URL}/api/sandboxes/{sb_id}/quote", timeout=60.0)
+    assert resp.status_code == 200
+    print(f"Quote reply: {resp.json()['quote']}")
+    
     # 5. Delete Sandbox (Renumbered or just reordered)
-    resp = httpx.delete(f"{BASE_URL}/api/sandboxes/{sb_id}")
+    resp = httpx.delete(f"{BASE_URL}/api/sandboxes/{sb_id}", timeout=60.0)
     assert resp.status_code == 200
     print(f"Deleted sandbox {sb_id}")

@@ -4,8 +4,13 @@ from pydantic import BaseModel
 import vertexai
 from vertexai.generative_models import GenerativeModel
 from dotenv import load_dotenv
+import asyncio
+import logging
 
 load_dotenv()
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
@@ -30,10 +35,21 @@ async def reply_message(payload: MessagePayload, x_sandbox_id: str = Header(defa
 
 @app.get("/quote")
 async def get_quote():
+    logger.info("Received request for quote")
     try:
-        response = model.generate_content("Provide a short, inspiring quote of the day.")
+        logger.info("Calling Vertex AI generate_content...")
+        loop = asyncio.get_running_loop()
+        response = await asyncio.wait_for(
+            loop.run_in_executor(None, model.generate_content, "Provide a short, inspiring quote of the day."),
+            timeout=30.0
+        )
+        logger.info("Vertex AI responded successfully")
         return {"quote": response.text}
+    except asyncio.TimeoutError:
+        logger.error("Vertex AI request timed out")
+        raise HTTPException(status_code=504, detail="Vertex AI request timed out")
     except Exception as e:
+        logger.error(f"Error generating quote: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/healthz")
