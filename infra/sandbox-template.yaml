@@ -10,7 +10,7 @@ spec:
         app: demo-agent
     spec:
       runtimeClassName: gvisor # Enforce gVisor sandbox
-      automountServiceAccountToken: false
+      automountServiceAccountToken: true
       securityContext:
         runAsNonRoot: true
       nodeSelector:
