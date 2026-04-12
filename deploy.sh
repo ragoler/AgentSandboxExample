@@ -31,7 +31,7 @@ echo "Pushing Demo Application image..."
 docker push "${REGISTRY}/demo-app:latest"
 
 echo "Building Main Application image..."
-docker build -t "${REGISTRY}/main-app:latest" ./main-app
+docker build -t "${REGISTRY}/main-app:latest" -f main-app/Dockerfile .
 
 echo "Pushing Main Application image..."
 docker push "${REGISTRY}/main-app:latest"
