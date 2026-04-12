@@ -37,14 +37,10 @@ async def reply_message(payload: MessagePayload, x_sandbox_id: str = Header(defa
 async def get_quote():
     logger.info("Received request for quote")
     try:
-        logger.info("Calling Vertex AI generate_content...")
-        loop = asyncio.get_running_loop()
-        response = await asyncio.wait_for(
-            loop.run_in_executor(None, model.generate_content, "Provide a short, inspiring quote of the day."),
-            timeout=30.0
-        )
-        logger.info("Vertex AI responded successfully")
-        return {"quote": response.text}
+        logger.info("Mocking Vertex AI call...")
+        await asyncio.sleep(1)
+        logger.info("Mock Vertex AI responded successfully")
+        return {"quote": "This is a mock quote from the sandbox!"}
     except asyncio.TimeoutError:
         logger.error("Vertex AI request timed out")
         raise HTTPException(status_code=504, detail="Vertex AI request timed out")

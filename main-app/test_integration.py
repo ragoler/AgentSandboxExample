@@ -3,15 +3,15 @@ import time
 import pytest
 import subprocess
 
-BASE_URL = "http://127.0.0.1:8000"
+BASE_URL = "http://127.0.0.1:8001"
 
 @pytest.fixture(autouse=True, scope="module")
 def cleanup_sandboxes():
     print("\n[Setup] Cleaning up sandboxes before test...")
     subprocess.run(["./clean_sandboxes.sh"], check=True)
     yield
-    print("\n[Teardown] Cleaning up sandboxes after test...")
-    subprocess.run(["./clean_sandboxes.sh"], check=True)
+    print("\n[Teardown] Skipping cleanup after test for debugging...")
+    # subprocess.run(["./clean_sandboxes.sh"], check=True)
 
 def test_e2e_gke():
     # 1. Create Sandbox
