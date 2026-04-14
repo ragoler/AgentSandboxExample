@@ -1,9 +1,12 @@
 import os
 from dotenv import load_dotenv
+import logging
 
 load_dotenv(override=True)
 MODE = os.environ.get("MODE", "MOCK").upper()
 GATEWAY_NAME = os.environ.get("GATEWAY_NAME", "external-http-gateway")
+
+logger = logging.getLogger(__name__)
 
 if MODE == "REAL":
     from k8s_agent_sandbox import SandboxClient
@@ -26,12 +29,17 @@ if MODE == "REAL":
             )
             
         def create(self):
+            logger.info(f"[{self.sandbox_id}] Creating claim...")
+            import time
+            start_time = time.time()
             self.client._create_claim()
+            logger.info(f"[{self.sandbox_id}] Claim created. Waiting for ready...")
             self.client._wait_for_sandbox_ready()
+            logger.info(f"[{self.sandbox_id}] Sandbox ready. Waiting for gateway IP...")
             self.client._wait_for_gateway_ip()
+            logger.info(f"[{self.sandbox_id}] Gateway IP acquired. Starting health check...")
             
             # Health check (Require 3 consecutive successes to ensure stability)
-            import time
             health_ok = False
             consecutive_successes = 0
             time.sleep(1.0)
@@ -44,19 +52,23 @@ if MODE == "REAL":
                 except Exception:
                     pass
                 time.sleep(0.2)
+            logger.info(f"[{self.sandbox_id}] Health check result: {health_ok}. Took {time.time() - start_time:.2f}s")
             return health_ok
 
         def request(self, method, path, json=None):
              import time
-             for _ in range(30):
+             start_time = time.time()
+             for i in range(30):
                  try:
                      resp = self.client._request(method, path, json=json)
                      if resp.status_code != 502:
+                         logger.info(f"[{self.sandbox_id}] Request {method} {path} succeeded on attempt {i+1}. Took {time.time() - start_time:.2f}s")
                          return resp
-                     print(f"Got 502 from gateway, retrying in 1s...")
+                     logger.warning(f"[{self.sandbox_id}] Got 502 from gateway, retrying in 1s... (Attempt {i+1})")
                  except Exception as e:
-                      print(f"Request error: {e}, retrying in 1s...")
+                      logger.warning(f"[{self.sandbox_id}] Request error: {e}, retrying in 1s... (Attempt {i+1})")
                  time.sleep(1.0)
+             logger.error(f"[{self.sandbox_id}] Request {method} {path} failed after 30 attempts.")
              return self.client._request(method, path, json=json)
              
         def terminate(self):
@@ -70,10 +82,10 @@ if MODE == "REAL":
                      plural="sandboxclaims",
                      name=self.client.claim_name
                  )
-                 print(f"Deleted SandboxClaim {self.client.claim_name}")
+                 logger.info(f"Deleted SandboxClaim {self.client.claim_name}")
              except Exception as e:
-                 print(f"Failed to delete SandboxClaim {self.client.claim_name}: {e}")
-
+                 logger.error(f"Failed to delete SandboxClaim {self.client.claim_name}: {e}")
+ 
         def sleep(self):
              try:
                  load_k8s_config()
@@ -95,9 +107,9 @@ if MODE == "REAL":
                  )
                  return "Sleeping"
              except Exception as e:
-                 print(f"Failed to sleep sandbox {self.sandbox_id}: {e}")
+                 logger.error(f"Failed to sleep sandbox {self.sandbox_id}: {e}")
                  raise e
-
+ 
         def wake(self):
              try:
                  load_k8s_config()
@@ -119,7 +131,7 @@ if MODE == "REAL":
                  )
                  return "Running"
              except Exception as e:
-                 print(f"Failed to wake sandbox {self.sandbox_id}: {e}")
+                 logger.error(f"Failed to wake sandbox {self.sandbox_id}: {e}")
                  raise e
 
     def get_client(sandbox_id):

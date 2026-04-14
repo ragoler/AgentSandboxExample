@@ -1,4 +1,5 @@
 import os
+import time
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 from google import genai
@@ -22,6 +23,7 @@ class MessagePayload(BaseModel):
 
 @app.post("/message")
 async def reply_message(payload: MessagePayload, x_sandbox_id: str = Header(default="UNKNOWN_SANDBOX")):
+    logger.info(f"Received message request for sandbox {x_sandbox_id}")
     return {"reply": f"[{x_sandbox_id}] {payload.message}"}
 
 @app.get("/quote")
@@ -29,6 +31,7 @@ async def get_quote():
     logger.info("Received request for quote")
     try:
         logger.info("Calling Gemini generate_content...")
+        start_time = time.time()
         loop = asyncio.get_running_loop()
         def call_gemini():
             return client.models.generate_content(
@@ -39,13 +42,13 @@ async def get_quote():
             loop.run_in_executor(None, call_gemini),
             timeout=30.0
         )
-        logger.info("Gemini responded successfully")
+        logger.info(f"Gemini responded successfully. Took {time.time() - start_time:.2f}s")
         return {"quote": response.text}
     except asyncio.TimeoutError:
-        logger.error("Vertex AI request timed out")
+        logger.error(f"Vertex AI request timed out after {time.time() - start_time:.2f}s")
         raise HTTPException(status_code=504, detail="Vertex AI request timed out")
     except Exception as e:
-        logger.error(f"Error generating quote: {e}")
+        logger.error(f"Error generating quote after {time.time() - start_time:.2f}s: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/healthz")
