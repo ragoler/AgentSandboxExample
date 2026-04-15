@@ -10,6 +10,7 @@ spec:
         app: demo-agent
     spec:
       runtimeClassName: gvisor # Enforce gVisor sandbox
+      serviceAccountName: ${SANDBOX_KSA}
       automountServiceAccountToken: true
       securityContext:
         runAsNonRoot: true
@@ -33,12 +34,17 @@ spec:
           value: "${PROJECT_NAME}"
         - name: REGION
           value: "${REGION}"
+        - name: GOOGLE_GENAI_USE_VERTEXAI
+          value: "${GOOGLE_GENAI_USE_VERTEXAI}"
+        # Only used when GOOGLE_GENAI_USE_VERTEXAI=FALSE (API key fallback).
+        # When using Workload Identity (GOOGLE_GENAI_USE_VERTEXAI=TRUE), this
+        # secret is not required and can be omitted from the template.
         - name: GEMINI_API_KEY
           valueFrom:
             secretKeyRef:
               name: gemini-api-key
               key: GEMINI_API_KEY
-
+              optional: true
         resources:
           requests:
             cpu: "250m"

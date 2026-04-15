@@ -14,9 +14,22 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-# Initialize Gemini Client
-# It will automatically use GEMINI_API_KEY from the environment.
-client = genai.Client()
+# Initialize Gemini Client.
+# Supports two authentication modes:
+#   1. Workload Identity (recommended): Set GOOGLE_GENAI_USE_VERTEXAI=TRUE.
+#      Authenticates automatically via the GKE metadata server — no API keys needed.
+#   2. API Key (fallback): Set GEMINI_API_KEY and GOOGLE_GENAI_USE_VERTEXAI=FALSE.
+USE_VERTEXAI = os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "FALSE").upper() == "TRUE"
+if USE_VERTEXAI:
+    client = genai.Client(
+        vertexai=True,
+        project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
+        location=os.environ.get("REGION", "us-central1"),
+    )
+    logger.info("Gemini client initialized with Vertex AI (Workload Identity)")
+else:
+    client = genai.Client()
+    logger.info("Gemini client initialized with API key")
 
 class MessagePayload(BaseModel):
     message: str
