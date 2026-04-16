@@ -72,31 +72,44 @@ fi
 echo "Getting cluster credentials..."
 gcloud container clusters get-credentials "$CLUSTER_NAME" --region "$REGION"
 
-echo "Granting Vertex AI User role to default Compute Engine service account..."
+echo "Configuring authentication for sandbox pods..."
 PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format="value(projectNumber)")
-gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-    --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
-    --role="roles/aiplatform.user"
 
-echo "Configuring Workload Identity for sandboxes..."
-GSA_NAME=${GSA_NAME:-"dbagent-gsa"}
-GSA_EMAIL="$GSA_NAME@$PROJECT_ID.iam.gserviceaccount.com"
-KSA_NAME="default"
-NAMESPACE="default"
+if [ "${GOOGLE_GENAI_USE_VERTEXAI:-FALSE}" = "TRUE" ]; then
+  echo "Setting up Workload Identity Federation (WIF) for Vertex AI..."
+  # The GKE metadata server IS accessible from gVisor sandbox pods when the
+  # node pool uses --workload-metadata=GKE_METADATA (the default for gVisor pools).
+  # This means WIF works without any proxy or workaround.
 
-gcloud iam service-accounts add-iam-policy-binding "$GSA_EMAIL" \
-    --role="roles/iam.workloadIdentityUser" \
-    --member="serviceAccount:$PROJECT_ID.svc.id.goog[$NAMESPACE/$KSA_NAME]"
+  # Create a dedicated KSA for sandbox pods
+  kubectl create serviceaccount sandbox-ai-sa -n default --dry-run=client -o yaml | kubectl apply -f -
 
-kubectl annotate serviceaccount "$KSA_NAME" --namespace "$NAMESPACE" \
-    iam.gke.io/gcp-service-account="$GSA_EMAIL" --overwrite
+  # Grant Vertex AI access via direct principal binding (recommended over legacy GSA binding)
+  gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+      --role="roles/aiplatform.user" \
+      --member="principal://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${PROJECT_ID}.svc.id.goog/subject/ns/default/sa/sandbox-ai-sa" \
+      --condition=None
 
-echo "Creating Secret for demo app..."
-kubectl create secret generic gemini-api-key --from-literal=GEMINI_API_KEY="$GEMINI_API_KEY" --dry-run=client -o yaml | kubectl apply -f -
+  echo "WIF configured. Sandbox pods will authenticate to Vertex AI automatically."
+else
+  echo "Using Gemini API key authentication (GOOGLE_GENAI_USE_VERTEXAI != TRUE)."
+  if [ -z "$GEMINI_API_KEY" ]; then
+    echo "Warning: GEMINI_API_KEY is not set in .env. Sandbox pods will fail to authenticate."
+  fi
+  kubectl create secret generic gemini-api-key --from-literal=GEMINI_API_KEY="$GEMINI_API_KEY" --dry-run=client -o yaml | kubectl apply -f -
+fi
 
 echo "Applying Kubernetes manifests..."
 export PROJECT_NAME
 export REGION
+export GOOGLE_GENAI_USE_VERTEXAI
+
+# Set the KSA for sandbox pods based on auth mode
+if [ "${GOOGLE_GENAI_USE_VERTEXAI:-FALSE}" = "TRUE" ]; then
+  export SANDBOX_KSA="sandbox-ai-sa"
+else
+  export SANDBOX_KSA="default"
+fi
 python3 -c "import os, sys; print(os.path.expandvars(sys.stdin.read()))" < infra/sandbox-template.yaml | kubectl apply -f -
 python3 -c "import os, sys; print(os.path.expandvars(sys.stdin.read()))" < infra/sandbox-router.yaml | kubectl apply -f -
 kubectl apply -f infra/sandbox-warmpool.yaml

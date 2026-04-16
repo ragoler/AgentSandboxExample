@@ -47,8 +47,11 @@ pip install --index-url https://pypi.org/simple -r demo-app/requirements.txt
     CLUSTER_NAME=YOUR_CLUSTER_NAME
     REGION=YOUR_REGION
     PROJECT_NAME=YOUR_PROJECT_ID
-    GEMINI_API_KEY=YOUR_GEMINI_API_KEY
-    GOOGLE_GENAI_USE_VERTEXAI=FALSE
+    # For Workload Identity (recommended for GKE deployment):
+    GOOGLE_GENAI_USE_VERTEXAI=TRUE
+    # For API key fallback (required for local/mock mode):
+    # GEMINI_API_KEY=YOUR_GEMINI_API_KEY
+    # GOOGLE_GENAI_USE_VERTEXAI=FALSE
     ```
 2.  Run the application:
     ```bash
@@ -87,16 +90,27 @@ Ensure your `.env` file has the correct values:
 -   `MODE=REAL`
 -   `PROJECT_NAME`: Your real GCP Project ID.
 -   `REGION`: The region where you want to deploy (e.g., `us-west1`).
--   `GEMINI_API_KEY`: Your Gemini API Key.
--   `GOOGLE_GENAI_USE_VERTEXAI`: Set to `FALSE` to use Gemini API Key, or `TRUE` to use Vertex AI.
+-   `GOOGLE_GENAI_USE_VERTEXAI`: Set to `TRUE` (recommended) or `FALSE`.
 
-> [!IMPORTANT]
-> In a gVisor sandboxed environment on GKE, access to the GKE Metadata Server is blocked by default. This prevents standard Workload Identity from working out-of-the-box without a proxy.
-> 
-> To bypass this constraint, we use a **Gemini API Key** for authentication within the sandbox.
-> The `build_infra.sh` script automatically creates a Kubernetes Secret named `gemini-api-key` from the `GEMINI_API_KEY` variable in your `.env` file, and mounts it into the sandbox pods.
-> 
-> If you prefer to use Vertex AI (and have configured a metadata proxy or other method), you can set `GOOGLE_GENAI_USE_VERTEXAI=TRUE` in your `.env` file.
+#### Authentication: Workload Identity vs API Key
+
+This example supports two authentication modes for calling Gemini from sandbox pods:
+
+**Option 1: Workload Identity Federation (recommended)**
+
+Set `GOOGLE_GENAI_USE_VERTEXAI=TRUE` in your `.env` file. The `build_infra.sh` script will:
+- Create a dedicated Kubernetes Service Account (`sandbox-ai-sa`)
+- Grant it `roles/aiplatform.user` via a direct IAM principal binding
+- Configure the sandbox template to use this KSA
+
+Sandbox pods authenticate to Vertex AI automatically via the GKE metadata server — no API keys or secrets needed.
+
+> [!NOTE]
+> The GKE metadata server **is accessible** from gVisor sandbox pods when the node pool uses `--workload-metadata=GKE_METADATA` (the default for gVisor-enabled node pools). This means Workload Identity Federation works without any proxy or workaround.
+
+**Option 2: Gemini API Key (fallback)**
+
+Set `GOOGLE_GENAI_USE_VERTEXAI=FALSE` and provide `GEMINI_API_KEY` in your `.env` file. The script will create a Kubernetes Secret and mount it into sandbox pods. Use this option when WIF is not available (e.g., non-GKE clusters or testing without a GCP project).
 
 ### Step 2: Build and Push Images
 
