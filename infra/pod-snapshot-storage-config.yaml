@@ -1,0 +1,10 @@
+apiVersion: podsnapshot.gke.io/v1
+kind: PodSnapshotStorageConfig
+metadata:
+  name: sandbox-pod-snapshot-storage-config
+spec:
+  snapshotStorageConfig:
+    gcs:
+      bucket: "${SNAPSHOT_BUCKET_NAME}"
+      path: "sandbox-checkpoints"
+      tokenSource: "podKSA"

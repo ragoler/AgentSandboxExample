@@ -23,9 +23,9 @@ if [ -z "$REGION" ]; then
   echo "Error: REGION is not set. Please set it in .env or environment."
   exit 1
 fi
-CLUSTER_VERSION=${CLUSTER_VERSION:-"1.35.2-gke.1269000"}
+CLUSTER_VERSION=${CLUSTER_VERSION:-"1.35.3-gke.1234000"}
 NODE_POOL_NAME=${NODE_POOL_NAME:-"agent-sandbox-pool"}
-MACHINE_TYPE=${MACHINE_TYPE:-"e2-standard-2"}
+MACHINE_TYPE=${MACHINE_TYPE:-"n4-standard-2"} # Pod Snapshots do not support E2 machines.
 
 
 if gcloud container clusters describe "$CLUSTER_NAME" --region="$REGION" >/dev/null 2>&1; then
@@ -51,6 +51,18 @@ else
       --sandbox=type=gvisor
 fi
 
+CURRENT_VERSION=$(gcloud container node-pools describe "$NODE_POOL_NAME" --cluster="$CLUSTER_NAME" --region="$REGION" --format="value(version)" 2>/dev/null)
+if [ "$CURRENT_VERSION" = "$CLUSTER_VERSION" ]; then
+  echo "Node pool $NODE_POOL_NAME is already at version $CLUSTER_VERSION, skipping upgrade."
+else
+  echo "Updating node pool version from $CURRENT_VERSION to $CLUSTER_VERSION..."
+  gcloud container clusters upgrade "$CLUSTER_NAME" \
+    --cluster-version="$CLUSTER_VERSION" \
+    --region="$REGION" \
+    --node-pool="$NODE_POOL_NAME" \
+    --quiet
+fi
+
 if gcloud beta container clusters describe "$CLUSTER_NAME" --region="$REGION" --format="value(addonsConfig.agentSandboxConfig.enabled)" | grep -q "True"; then
   echo "Agent Sandbox feature is already enabled."
 else
@@ -60,7 +72,16 @@ else
       --enable-agent-sandbox
 fi
 
-if gcloud container clusters describe "$CLUSTER_NAME" --region="$REGION" --format="value(addonsConfig.gatewayApiConfig.channel)" | grep -q "STANDARD"; then
+if gcloud beta container clusters describe "$CLUSTER_NAME" --region="$REGION" --format="value(addonsConfig.podSnapshotConfig.enabled)" | grep -q "True"; then
+  echo "Pod Snapshots feature is already enabled."
+else
+  echo "Enabling Pod Snapshots feature on cluster..."
+  gcloud beta container clusters update "$CLUSTER_NAME" \
+      --region="$REGION" \
+      --enable-pod-snapshots
+fi
+
+if gcloud container clusters describe "$CLUSTER_NAME" --region="$REGION" --format="value(networkConfig.gatewayApiConfig.channel)" | grep -q "CHANNEL_STANDARD"; then
   echo "Gateway API is already enabled."
 else
   echo "Enabling Gateway API on cluster (this may take some time)..."
@@ -99,7 +120,28 @@ else
   kubectl create secret generic gemini-api-key --from-literal=GEMINI_API_KEY="$GEMINI_API_KEY" --dry-run=client -o yaml | kubectl apply -f -
 fi
 
+echo "Configuring Cloud Storage bucket for Pod Snapshots..."
+SNAPSHOT_BUCKET_NAME=${SNAPSHOT_BUCKET_NAME:-"${PROJECT_ID}-sandbox-snapshots"}
+
+if gcloud storage buckets describe "gs://$SNAPSHOT_BUCKET_NAME" >/dev/null 2>&1; then
+  echo "Cloud Storage bucket gs://$SNAPSHOT_BUCKET_NAME already exists."
+else
+  echo "Creating Cloud Storage bucket gs://$SNAPSHOT_BUCKET_NAME for Pod Snapshots..."
+  gcloud storage buckets create "gs://$SNAPSHOT_BUCKET_NAME" \
+      --uniform-bucket-level-access \
+      --enable-hierarchical-namespace \
+      --soft-delete-duration=0d \
+      --location="$REGION"
+fi
+
+echo "Granting controller permissions to GKE Service Agent..."
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:service-${PROJECT_NUMBER}@container-engine-robot.iam.gserviceaccount.com" \
+  --role="roles/storage.objectUser" \
+  --condition="expression=resource.name.startsWith(\"projects/_/buckets/${SNAPSHOT_BUCKET_NAME}\"),title=restrict_to_bucket,description=Restricts access to one bucket only"
+
 echo "Applying Kubernetes manifests..."
+export SNAPSHOT_BUCKET_NAME
 export PROJECT_NAME
 export REGION
 export GOOGLE_GENAI_USE_VERTEXAI
@@ -110,12 +152,27 @@ if [ "${GOOGLE_GENAI_USE_VERTEXAI:-FALSE}" = "TRUE" ]; then
 else
   export SANDBOX_KSA="default"
 fi
+
+echo "Granting Cloud Storage access to Kubernetes Service Accounts..."
+kubectl create serviceaccount "$SANDBOX_KSA" -n default --dry-run=client -o yaml | kubectl apply -f -
+
+gcloud storage buckets add-iam-policy-binding "gs://$SNAPSHOT_BUCKET_NAME" \
+    --member="principal://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${PROJECT_ID}.svc.id.goog/subject/ns/default/sa/${SANDBOX_KSA}" \
+    --role="roles/storage.bucketViewer"
+
+gcloud storage buckets add-iam-policy-binding "gs://$SNAPSHOT_BUCKET_NAME" \
+    --member="principal://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${PROJECT_ID}.svc.id.goog/subject/ns/default/sa/${SANDBOX_KSA}" \
+    --role="roles/storage.objectUser"
+
 python3 -c "import os, sys; print(os.path.expandvars(sys.stdin.read()))" < infra/sandbox-template.yaml | kubectl apply -f -
 python3 -c "import os, sys; print(os.path.expandvars(sys.stdin.read()))" < infra/sandbox-router.yaml | kubectl apply -f -
 kubectl apply -f infra/sandbox-warmpool.yaml
 kubectl apply -f infra/gateway.yaml
 kubectl apply -f infra/http-route.yaml
 kubectl apply -f infra/health-check-policy.yaml
+
+python3 -c "import os, sys; print(os.path.expandvars(sys.stdin.read()))" < infra/pod-snapshot-storage-config.yaml | kubectl apply -f -
+kubectl apply -f infra/pod-snapshot-policy.yaml
 
 echo "Applying Main Application manifests..."
 python3 -c "import os, sys; print(os.path.expandvars(sys.stdin.read()))" < infra/main-app.yaml | kubectl apply -f -
