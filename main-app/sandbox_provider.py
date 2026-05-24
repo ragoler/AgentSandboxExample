@@ -10,8 +10,84 @@ logger = logging.getLogger(__name__)
 
 if MODE == "REAL":
     from k8s_agent_sandbox import SandboxClient
-    from kubernetes import client, config
+    from kubernetes import client, config, watch
+    import time
+    import requests
+    import logging
     
+    # Monkeypatch SandboxClient._wait_for_sandbox_ready to watch SandboxClaims instead of Sandboxes
+    # This ensures compatibility between k8s-agent-sandbox 0.2.1 and SandboxWarmPool adoption logic.
+    def patched_wait_for_sandbox_ready(self):
+        if not self.claim_name:
+            raise RuntimeError("Cannot wait for sandbox; a sandboxclaim has not been created.")
+        w = watch.Watch()
+        logger.info(f"Watching for SandboxClaim {self.claim_name} to become ready...")
+        for event in w.stream(
+            func=self.custom_objects_api.list_namespaced_custom_object,
+            namespace=self.namespace,
+            group="extensions.agents.x-k8s.io",
+            version="v1alpha1",
+            plural="sandboxclaims",
+            field_selector=f"metadata.name={self.claim_name}",
+            timeout_seconds=self.sandbox_ready_timeout
+        ):
+            if event["type"] in ["ADDED", "MODIFIED"]:
+                claim_object = event['object']
+                status = claim_object.get('status', {})
+                conditions = status.get('conditions', [])
+                is_ready = False
+                for cond in conditions:
+                    if cond.get('type') == 'Ready' and cond.get('status') == 'True':
+                        is_ready = True
+                        break
+                if is_ready:
+                    sandbox_ref = status.get('sandbox', {})
+                    self.sandbox_name = sandbox_ref.get('Name') or sandbox_ref.get('name')
+                    if not self.sandbox_name:
+                        self.sandbox_name = self.claim_name
+                    logger.info(f"SandboxClaim {self.claim_name} is ready. Bound to sandbox {self.sandbox_name}.")
+                    self.annotations = claim_object.get('metadata', {}).get('annotations', {})
+                    pod_name = self.annotations.get("sandboxtemplate.extensions.agents.x-k8s.io/pod-name")
+                    if pod_name:
+                        self.pod_name = pod_name
+                    else:
+                        self.pod_name = self.sandbox_name
+                    w.stop()
+                    return
+        self.__exit__(None, None, None)
+        raise TimeoutError(f"SandboxClaim did not become ready within {self.sandbox_ready_timeout} seconds.")
+
+    def patched_request(self, method: str, endpoint: str, **kwargs) -> requests.Response:
+        if not self.is_ready():
+            raise RuntimeError("Sandbox is not ready for communication.")
+
+        if self.port_forward_process and self.port_forward_process.poll() is not None:
+            _, stderr = self.port_forward_process.communicate()
+            raise RuntimeError(f"Kubectl Port-Forward crashed BEFORE request!\nStderr: {stderr.decode(errors='ignore')}")
+
+        url = f"{self.base_url.rstrip('/')}/{endpoint.lstrip('/')}"
+
+        headers = kwargs.get("headers", {})
+        headers["X-Sandbox-ID"] = getattr(self, 'sandbox_name', None) or self.claim_name
+        headers["X-Sandbox-Namespace"] = self.namespace
+        headers["X-Sandbox-Port"] = str(self.server_port)
+        kwargs["headers"] = headers
+
+        try:
+            response = self.session.request(method, url, **kwargs)
+            response.raise_for_status()
+            return response
+        except requests.exceptions.RequestException as e:
+            if self.port_forward_process and self.port_forward_process.poll() is not None:
+                _, stderr = self.port_forward_process.communicate()
+                raise RuntimeError(f"Kubectl Port-Forward crashed DURING request!\nStderr: {stderr.decode(errors='ignore')}") from e
+
+            logging.error(f"Request to gateway router failed: {e}")
+            raise RuntimeError(f"Failed to communicate with the sandbox via the gateway at {url}.") from e
+
+    SandboxClient._wait_for_sandbox_ready = patched_wait_for_sandbox_ready
+    SandboxClient._request = patched_request
+
     def load_k8s_config():
         try:
             config.load_incluster_config()

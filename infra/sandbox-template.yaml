@@ -36,6 +36,8 @@ spec:
           value: "${REGION}"
         - name: GOOGLE_GENAI_USE_VERTEXAI
           value: "${GOOGLE_GENAI_USE_VERTEXAI}"
+        - name: GCE_METADATA_HOST
+          value: "169.254.169.254"
         # Only used when GOOGLE_GENAI_USE_VERTEXAI=FALSE (API key fallback).
         # When using Workload Identity (GOOGLE_GENAI_USE_VERTEXAI=TRUE), this
         # secret is not required and can be omitted from the template.
