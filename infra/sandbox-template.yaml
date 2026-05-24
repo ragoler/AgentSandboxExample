@@ -11,7 +11,7 @@ spec:
     spec:
       runtimeClassName: gvisor # Enforce gVisor sandbox
       serviceAccountName: ${SANDBOX_KSA}
-      automountServiceAccountToken: true
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
       nodeSelector:
