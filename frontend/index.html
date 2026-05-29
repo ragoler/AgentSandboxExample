@@ -6,7 +6,7 @@
     <title>Agent Sandbox Manager</title>
     <link rel="stylesheet" href="style.css?v=1">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
-    <script src="app.js?v=3" defer></script>
+    <script src="app.js?v=4" defer></script>
 </head>
 <body>
     <div class="container">
@@ -49,6 +49,10 @@
                     <div class="stat-item error">
                         <span class="stat-label">Error</span>
                         <span class="stat-value" id="error-stats">0</span>
+                    </div>
+                    <div class="stat-item snapshots" title="Pod Snapshots stored in the GCS bucket (one per Sleep). Each snapshot is ~4 checkpoint files: checkpoint.img, metadata, pages.img, pages_meta.img.">
+                        <span class="stat-label">Snapshots Stored</span>
+                        <span class="stat-value" id="snapshot-stats">0</span>
                     </div>
                 </div>
             </div>

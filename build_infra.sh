@@ -164,6 +164,12 @@ gcloud storage buckets add-iam-policy-binding "gs://$SNAPSHOT_BUCKET_NAME" \
     --member="principal://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${PROJECT_ID}.svc.id.goog/subject/ns/default/sa/${SANDBOX_KSA}" \
     --role="roles/storage.objectUser"
 
+# Allow the Main Application (main-app-ns/main-app-ksa) to read the snapshot
+# bucket so the UI can display the live object count.
+gcloud storage buckets add-iam-policy-binding "gs://$SNAPSHOT_BUCKET_NAME" \
+    --member="principal://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${PROJECT_ID}.svc.id.goog/subject/ns/main-app-ns/sa/main-app-ksa" \
+    --role="roles/storage.objectViewer"
+
 python3 -c "import os, sys; print(os.path.expandvars(sys.stdin.read()))" < infra/sandbox-template.yaml | kubectl apply -f -
 python3 -c "import os, sys; print(os.path.expandvars(sys.stdin.read()))" < infra/sandbox-router.yaml | kubectl apply -f -
 kubectl apply -f infra/sandbox-warmpool.yaml

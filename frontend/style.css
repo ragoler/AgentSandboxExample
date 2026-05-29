@@ -353,3 +353,4 @@ footer {
 .stat-item.provisioning .stat-value { color: var(--primary); }
 .stat-item.sleeping .stat-value { color: var(--warning); }
 .stat-item.error .stat-value { color: var(--danger); }
+.stat-item.snapshots .stat-value { color: #8b5cf6; }

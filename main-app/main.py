@@ -19,7 +19,10 @@ sys.path.append(str(Path(__file__).parent))
 
 from sandbox_provider import get_client, cleanup_all
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# force=True so our handler wins even though uvicorn has already configured the
+# root logger by the time this module is imported (otherwise sandbox_provider's
+# suspend/resume/snapshot logs never reach stdout).
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', force=True)
 logger = logging.getLogger(__name__)
 
 # In-Memory State
@@ -78,6 +81,11 @@ def get_stats_endpoint():
     logger.info("Getting stats")
     from sandbox_provider import get_stats
     return get_stats(sandboxes)
+
+@app.get("/api/snapshot-count")
+def snapshot_count_endpoint():
+    from sandbox_provider import get_snapshot_count
+    return {"count": get_snapshot_count()}
 
 @app.post("/api/sandboxes/{sandbox_id}/message")
 def send_message(sandbox_id: str, payload: MessagePayload):

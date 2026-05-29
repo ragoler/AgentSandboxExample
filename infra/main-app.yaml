@@ -77,6 +77,8 @@ spec:
           value: "${PROJECT_NAME}"
         - name: REGION
           value: "${REGION}"
+        - name: SNAPSHOT_BUCKET_NAME
+          value: "${SNAPSHOT_BUCKET_NAME}"
 ---
 apiVersion: v1
 kind: Service

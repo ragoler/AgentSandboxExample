@@ -57,6 +57,15 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             console.error("Failed to fetch stats:", error);
         }
+
+        // Snapshot bucket object count — grows every time a sandbox is slept.
+        try {
+            const snapResp = await fetch('/api/snapshot-count');
+            const snapData = await snapResp.json();
+            document.getElementById('snapshot-stats').innerText = snapData.count;
+        } catch (error) {
+            console.error("Failed to fetch snapshot count:", error);
+        }
     }
 
     function renderSandboxes(sandboxes) {

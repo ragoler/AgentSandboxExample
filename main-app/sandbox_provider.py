@@ -30,6 +30,42 @@ if MODE == "REAL":
         except config.ConfigException:
             config.load_kube_config()
 
+    # PodSnapshot API coordinates (GKE Pod Snapshots).
+    _PS_GROUP = "podsnapshot.gke.io"
+    _PS_VERSION = "v1"
+    _PS_PLURAL = "podsnapshots"
+    _PS_ORIGIN_POD_ANNOTATION = "podsnapshot.gke.io/origin-pod"
+
+    def _delete_snapshots_for_pod(pod_name):
+        """Delete every PodSnapshot whose origin pod is pod_name, returning the
+        list of deleted snapshot names. Deleting the PodSnapshot CR makes the GKE
+        controller garbage-collect the backing checkpoint files in the bucket."""
+        deleted = []
+        if not pod_name:
+            return deleted
+        try:
+            load_k8s_config()
+            api = client.CustomObjectsApi()
+            snaps = api.list_namespaced_custom_object(
+                group=_PS_GROUP, version=_PS_VERSION, namespace=NAMESPACE, plural=_PS_PLURAL
+            )
+            for snap in snaps.get("items", []):
+                md = snap.get("metadata", {})
+                origin = (md.get("annotations") or {}).get(_PS_ORIGIN_POD_ANNOTATION)
+                if origin == pod_name:
+                    name = md.get("name")
+                    try:
+                        api.delete_namespaced_custom_object(
+                            group=_PS_GROUP, version=_PS_VERSION, namespace=NAMESPACE,
+                            plural=_PS_PLURAL, name=name
+                        )
+                        deleted.append(name)
+                    except Exception as e:
+                        logger.warning(f"Failed to delete PodSnapshot {name}: {e}")
+        except Exception as e:
+            logger.error(f"Failed to list/delete PodSnapshots for pod {pod_name}: {e}")
+        return deleted
+
     # A single shared client. 0.4.6 resolves warm-pool adoption natively
     # (SandboxClaim.status.sandbox.name), so the 0.2.1 monkeypatches are gone.
     # The gateway connection strategy routes requests through the sandbox-router
@@ -147,6 +183,11 @@ if MODE == "REAL":
             if not self.sandbox:
                 raise RuntimeError("Sandbox has not been created yet.")
             start_time = time.time()
+
+            # The pod name we restore from (Sandbox name == warm-pool pod name here)
+            # is the origin pod recorded on the PodSnapshot we'll delete afterwards.
+            origin_pod = self.sandbox.get_pod_name() or self.sandbox.sandbox_id
+
             resp = self.sandbox.resume()
             if not resp.success:
                 logger.error(f"[{self.sandbox_id}] Resume failed: {resp.error_reason}")
@@ -155,6 +196,23 @@ if MODE == "REAL":
                 f"[{self.sandbox_id}] Resumed (restored_from_snapshot="
                 f"{resp.restored_from_snapshot}). Took {time.time() - start_time:.2f}s"
             )
+
+            # Delete the snapshot(s) the restore happened from so they don't pile up
+            # across sleep/wake cycles. The SDK's label-based lookup doesn't match how
+            # the GKE controller labels PodSnapshots, so we match on the
+            # podsnapshot.gke.io/origin-pod annotation directly. Deleting the
+            # PodSnapshot triggers the controller to GC its bucket checkpoint files.
+            deleted = _delete_snapshots_for_pod(origin_pod)
+            if deleted:
+                logger.info(
+                    f"[{self.sandbox_id}] Deleted {len(deleted)} restored-from "
+                    f"snapshot(s) for pod {origin_pod}: {deleted}"
+                )
+            else:
+                logger.warning(
+                    f"[{self.sandbox_id}] No snapshots found to delete for pod {origin_pod}."
+                )
+
             return "Running"
 
     def get_client(sandbox_id):
@@ -201,6 +259,42 @@ if MODE == "REAL":
                 stats[status] += 1
         return stats
 
+    # Snapshot bucket object counter. Every suspend writes a Pod Snapshot to this
+    # GCS bucket, so the count visibly grows each time someone sleeps a sandbox.
+    SNAPSHOT_BUCKET_NAME = os.environ.get("SNAPSHOT_BUCKET_NAME") or (
+        f"{os.environ.get('PROJECT_NAME', '')}-sandbox-snapshots"
+    )
+    _snapshot_count_cache = {"value": 0, "ts": 0.0}
+
+    def get_snapshot_count():
+        # Each Pod Snapshot is stored as a folder of ~4 files under
+        # sandbox-checkpoints/<snapshot-id>/ (checkpoint.img, metadata, pages.img,
+        # pages_meta.img). Count distinct snapshot folders so the number reflects
+        # how many snapshots exist (one per suspend), not raw object count.
+        # Cache briefly so the 5s UI poll doesn't list the bucket on every request.
+        now = time.time()
+        if now - _snapshot_count_cache["ts"] < 3.0:
+            return _snapshot_count_cache["value"]
+        try:
+            from google.cloud import storage
+            storage_client = storage.Client()
+            snapshot_ids = set()
+            for b in storage_client.list_blobs(SNAPSHOT_BUCKET_NAME):
+                if b.name.endswith("/"):
+                    continue
+                parts = b.name.split("/")
+                # The immediate parent "folder" of each object is one snapshot.
+                if len(parts) >= 2 and parts[-2]:
+                    snapshot_ids.add(parts[-2])
+            count = len(snapshot_ids)
+            _snapshot_count_cache["value"] = count
+            _snapshot_count_cache["ts"] = now
+            return count
+        except Exception as e:
+            logger.error(f"Failed to count snapshots in bucket: {e}")
+            # Return last known value rather than failing the whole stats poll.
+            return _snapshot_count_cache["value"]
+
 elif MODE == "MOCK":
     from mock_sandbox import MockSandboxClient
 
@@ -244,3 +338,7 @@ elif MODE == "MOCK":
             if status in stats:
                 stats[status] += 1
         return stats
+
+    def get_snapshot_count():
+        # No real bucket in mock mode.
+        return 0
