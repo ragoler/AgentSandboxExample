@@ -31,6 +31,24 @@ else:
     client = genai.Client()
     logger.info("Gemini client initialized with API key")
 
+# In-memory counter that ticks once per second. This lives purely in process
+# memory, so it is the clearest proof that GKE Pod Snapshots capture live state:
+# after a sleep/wake the value continues from where it froze instead of resetting
+# to 0 (which is what a fresh pod start would show).
+counter_state = {"value": 0}
+
+@app.on_event("startup")
+async def start_counter():
+    async def _tick():
+        while True:
+            await asyncio.sleep(1)
+            counter_state["value"] += 1
+    asyncio.create_task(_tick())
+
+@app.get("/counter")
+async def get_counter():
+    return {"counter": counter_state["value"]}
+
 class MessagePayload(BaseModel):
     message: str
 

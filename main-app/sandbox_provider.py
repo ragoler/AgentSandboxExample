@@ -152,6 +152,14 @@ if MODE == "REAL":
             logger.error(f"[{self.sandbox_id}] Request {method} {path} failed after 30 attempts.")
             return self.sandbox.connector.send_request(method, path, json=json)
 
+        def counter(self):
+            # Single quick attempt (the UI polls this ~1/s, so no retry loop).
+            # Returns the sandbox's in-memory counter, or None on failure.
+            if not self.sandbox:
+                return None
+            resp = self.sandbox.connector.send_request("GET", "counter", timeout=5)
+            return resp.json().get("counter")
+
         def terminate(self):
             if not self.sandbox:
                 return
@@ -311,6 +319,13 @@ elif MODE == "MOCK":
 
         def request(self, method, path, json=None):
             return self.client._request(method, path, json=json)
+
+        def counter(self):
+            # Simulate a 1/sec in-memory counter for mock mode.
+            import time as _t
+            if not hasattr(self, "_counter_start"):
+                self._counter_start = _t.time()
+            return int(_t.time() - self._counter_start)
 
         def terminate(self):
             self.client.terminate()

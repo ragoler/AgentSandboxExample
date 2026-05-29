@@ -143,6 +143,29 @@ def get_quote(sandbox_id: str):
          logger.error(f"[{sandbox_id}] Failed to get quote: {str(e)}")
          raise HTTPException(status_code=500, detail=f"Failed to get quote via client: {str(e)}")
 
+@app.get("/api/sandboxes/{sandbox_id}/counter")
+def get_counter(sandbox_id: str):
+    # Returns the sandbox's in-memory counter. While Running we fetch it live and
+    # cache it; while Sleeping/Provisioning the pod is gone, so we return the last
+    # cached value (frozen) — which then resumes climbing after a wake, proving the
+    # snapshot preserved live process state.
+    if sandbox_id not in sandboxes:
+        raise HTTPException(status_code=404, detail="Sandbox not found")
+
+    sandbox = sandboxes[sandbox_id]
+    if sandbox["status"] != "Running":
+        return {"counter": sandbox.get("last_counter"), "live": False, "status": sandbox["status"]}
+
+    client_instance = sandbox.get("client_instance")
+    try:
+        value = client_instance.counter()
+        if value is not None:
+            sandbox["last_counter"] = value
+        return {"counter": value, "live": True, "status": "Running"}
+    except Exception as e:
+        logger.warning(f"[{sandbox_id}] Failed to fetch counter: {e}")
+        return {"counter": sandbox.get("last_counter"), "live": False, "status": sandbox["status"]}
+
 @app.post("/api/sandboxes/{sandbox_id}/sleep")
 def sleep_sandbox(sandbox_id: str):
     logger.info(f"[{sandbox_id}] Received sleep request")
@@ -151,6 +174,14 @@ def sleep_sandbox(sandbox_id: str):
     
     try:
         start_time = time.time()
+        # Capture the freshest counter value right before suspending so the UI's
+        # frozen number is as close as possible to what the snapshot preserves.
+        try:
+            value = sandboxes[sandbox_id]["client_instance"].counter()
+            if value is not None:
+                sandboxes[sandbox_id]["last_counter"] = value
+        except Exception:
+            pass
         new_status = sandboxes[sandbox_id]["client_instance"].sleep()
         logger.info(f"[{sandbox_id}] Sleep completed. Status: {new_status}. Took {time.time() - start_time:.2f}s")
         sandboxes[sandbox_id]["status"] = new_status
