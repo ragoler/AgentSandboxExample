@@ -19,9 +19,19 @@ rules:
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 - apiGroups: ["agents.x-k8s.io"]
   resources: ["sandboxes"]
-  verbs: ["get", "list", "watch"]
+  # patch/update needed to scale spec.replicas for real suspend (0) / resume (1).
+  verbs: ["get", "list", "watch", "update", "patch"]
 - apiGroups: ["gateway.networking.k8s.io"]
   resources: ["gateways"]
+  verbs: ["get", "list", "watch"]
+# GKE Pod Snapshots: client creates manual triggers to snapshot before suspend
+# and lists/reads/deletes snapshots to verify restore-on-resume.
+- apiGroups: ["podsnapshot.gke.io"]
+  resources: ["podsnapshots", "podsnapshotmanualtriggers"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Reading pods is needed to capture pod UID before suspend and confirm restore.
+- apiGroups: [""]
+  resources: ["pods"]
   verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

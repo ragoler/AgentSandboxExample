@@ -3,7 +3,7 @@ uvicorn
 pydantic
 kubernetes==35.0.0
 aiofiles
-k8s-agent-sandbox==0.2.1
+k8s-agent-sandbox==0.4.6
 pytest
 python-dotenv
 httpx
