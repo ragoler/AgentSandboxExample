@@ -353,3 +353,25 @@ footer {
 .stat-item.provisioning .stat-value { color: var(--primary); }
 .stat-item.sleeping .stat-value { color: var(--warning); }
 .stat-item.error .stat-value { color: var(--danger); }
+.stat-item.snapshots .stat-value { color: #8b5cf6; }
+
+.counter-area {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    background: rgba(139, 92, 246, 0.08);
+    border-radius: 8px;
+}
+.counter-area .label { font-size: 0.8rem; opacity: 0.8; }
+.counter-value {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    font-size: 1.4rem;
+    color: #8b5cf6;
+    min-width: 2ch;
+    text-align: right;
+}
+.counter-value.frozen { opacity: 0.45; }

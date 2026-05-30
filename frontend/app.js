@@ -12,6 +12,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let activeSandboxId = null;
     const lastMessages = {}; // Store last message per sandbox
+    const counters = {};     // Latest in-memory counter value per sandbox
+    let currentSandboxIds = [];
     let isInitialLoad = true;
 
     async function fetchSandboxes() {
@@ -57,10 +59,20 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             console.error("Failed to fetch stats:", error);
         }
+
+        // Snapshot bucket object count — grows every time a sandbox is slept.
+        try {
+            const snapResp = await fetch('/api/snapshot-count');
+            const snapData = await snapResp.json();
+            document.getElementById('snapshot-stats').innerText = snapData.count;
+        } catch (error) {
+            console.error("Failed to fetch snapshot count:", error);
+        }
     }
 
     function renderSandboxes(sandboxes) {
         grid.innerHTML = '';
+        currentSandboxIds = sandboxes.map(sb => sb.sandbox_id);
         if (sandboxes.length === 0) {
             grid.innerHTML = '<div class="card">No sandboxes found. Create one!</div>';
             return;
@@ -87,6 +99,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     <button class="btn secondary wake-btn" data-id="${sb.sandbox_id}" ${sb.status === 'Running' || isProvisioning ? 'disabled' : ''}>Wake</button>
                     <button class="btn secondary quote-btn" data-id="${sb.sandbox_id}" ${isDisabled ? 'disabled' : ''}>Quote</button>
                     <button class="btn danger delete-btn" data-id="${sb.sandbox_id}" ${isProvisioning ? 'disabled' : ''}>Delete</button>
+                </div>
+                <div class="counter-area">
+                    <span class="label">Live counter (in-sandbox memory):</span>
+                    <span class="counter-value" id="counter-${sb.sandbox_id}">${counters[sb.sandbox_id] ?? '—'}</span>
                 </div>
                 <div class="last-message-area" id="last-message-${sb.sandbox_id}">
                     <span class="label">Last Message:</span>
@@ -193,10 +209,34 @@ document.addEventListener('DOMContentLoaded', () => {
         area.scrollTop = area.scrollHeight; // Scroll to bottom
     }
 
+    async function fetchCounters() {
+        await Promise.all(currentSandboxIds.map(async (id) => {
+            try {
+                const resp = await fetch(`/api/sandboxes/${id}/counter`);
+                if (!resp.ok) return;
+                const data = await resp.json();
+                if (data.counter !== null && data.counter !== undefined) {
+                    counters[id] = data.counter;
+                }
+                const el = document.getElementById(`counter-${id}`);
+                if (el && counters[id] !== undefined) {
+                    el.textContent = counters[id];
+                    // Dim the value when it's frozen (sandbox not Running).
+                    el.classList.toggle('frozen', data.live === false);
+                }
+            } catch (e) {
+                // Ignore transient errors; keep showing the last value.
+            }
+        }));
+    }
+
     // Initial load
     fetchSandboxes();
 
-    // Poll for updates every 5 seconds
+    // Poll the sandbox list/stats every 5 seconds
     setInterval(fetchSandboxes, 5000);
+
+    // Poll the live counters every second so the increment is visible.
+    setInterval(fetchCounters, 1000);
 });
 
